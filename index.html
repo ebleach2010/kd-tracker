@@ -1922,7 +1922,16 @@ const Insights = {
     const bp={}; out.forEach(p=>{ const k=p.x+'|'+p.m+'|'+p.y; if(!bp[k]||p.conf>bp[k].conf)bp[k]=p; });
     return Object.values(bp).sort((a,b)=>b.conf-a.conf).slice(0,12);
   },
-  gapDays(vecs){ if(vecs.length<2)return 0; let gaps=0; for(let i=1;i<vecs.length;i++){ const d=Math.round((vecs[i]._ts-vecs[i-1]._ts)/DAY); if(d>1)gaps+=d-1; } return gaps; },
+  // "Missed" = only UNSPECIFIED blank days (a plain lack of data). Days the user
+  // explicitly marked "too busy" are accounted for, not missed, so they're excluded
+  // (per Eric: an unspecified skipped day is just missing data; the busy/unwell
+  // toggles are what give a blank day meaning — unwell days are real assessments).
+  gapDays(vecs){ if(vecs.length<2)return 0;
+    const busy=new Set((D().skips||[]).filter(s=>s.kind==='busy').map(s=>dayKey(s.ts)));
+    let gaps=0;
+    for(let i=1;i<vecs.length;i++){ const span=Math.round((vecs[i]._ts-vecs[i-1]._ts)/DAY);
+      for(let k=1;k<span;k++){ if(!busy.has(dayKey(vecs[i-1]._ts+k*DAY))) gaps++; } }
+    return gaps; },
 };
 function confColor(c){ if(c>=75)return 'var(--green)'; if(c>=50)return 'var(--amber)'; if(c>=35)return '#ff9a5c'; return 'var(--red)'; }
 
@@ -2203,9 +2212,32 @@ const Rx = {
   addRow(){ const m=D().meds[0]||{id:'',doses:[]}; const row={id:uid(), medId:m.id, dose:(m.baselineDose!=null?m.baselineDose:(m.doses&&m.doses[0])||''), freq:'1x', status:'continuing'};
     D().regimen.push(row); this.logChange(row); Store.saveNow(); render(); },
   remove(row){ D().regimen=D().regimen.filter(r=>r!==row); Store.saveNow(); render(); },
-  logDoseNow(row){ const m=D().meds.find(x=>x.id===row.medId);
-    D().medLogs.push({medId:row.medId, dose:row.dose===''?0:(isNaN(+row.dose)?row.dose:+row.dose), unit:(m&&m.unit)||'mg', changeType:row.freq==='acute'?'acute':'chronic', ts:Date.now(), purpose:m&&m.purpose, deviation:(row.dose===0||row.dose==='')?'missed':'added'});
-    Store.saveNow(); toast('Dose logged · '+fmtT(Date.now())); render(); },
+  // Log an individual dose event — now opens a dialog so each dose carries an
+  // ACUTE/CHRONIC assignment and an editable TIME TAKEN (both feed the algo: the
+  // acute/chronic flag drives the PK "on board" model + change-vs-regimen
+  // correlation, and the timestamp anchors the PK curve and lagged analyses).
+  logDose(row){ const m=D().meds.find(x=>x.id===row.medId)||{};
+    const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+    let changeType=row.freq==='acute'?'acute':'acute', ts=Date.now(); // default a dose event to "acute"
+    const dlg=el('div',{class:'dlg'});
+    dlg.append(el('h3',{},'Log dose · '+(m.name||'med')));
+    const doseIn=el('input',{type:'text',inputmode:'decimal',value:row.dose==null?'':row.dose,placeholder:(m.unit||'mg')});
+    dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Dose ('+(m.unit==null?'mg':m.unit||'mg')+') · 0 = skipped'),doseIn));
+    dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Type'),
+      seg(['Acute','Chronic'],'Acute',x=>changeType=x.toLowerCase())));
+    dlg.append(el('p',{class:'muted',style:'font-size:11px;margin:-4px 0 6px'},'Acute = a one-off dose/timing event (fluctuating). Chronic = a change to your standing regimen.'));
+    const timeLbl=el('span',{class:'muted',style:'flex:1;font-size:12.5px'},'Taken: '+fmtDT(ts));
+    dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Time taken'),
+      el('div',{class:'row',style:'gap:8px'}, timeLbl,
+        el('button',{class:'btn sm ghost',onclick:()=>timeDateEditor('Time taken',ts,t=>{ ts=t; timeLbl.textContent='Taken: '+fmtDT(ts); })},'Edit'))));
+    dlg.append(el('div',{class:'acts'},
+      el('button',{class:'btn ghost',onclick:close},'Cancel'),
+      el('button',{class:'btn primary',onclick:()=>{ const dv=doseIn.value.trim();
+        const doseVal=dv===''?0:(isNaN(+dv)?dv:+dv);
+        D().medLogs.push({medId:row.medId, dose:doseVal, unit:(m.unit==null?'mg':m.unit||'mg'), changeType, ts, purpose:m.purpose||null, deviation:(doseVal===0||dv==='')?'missed':'added'});
+        Store.saveNow(); close(); toast((m.name||'Dose')+(doseVal===0?' skipped':' logged')+' · '+fmtT(ts)); render(); }},'Log dose')));
+    scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim);
+  },
 };
 Views.meds=(v)=>{
   v.append(header('Meds',''));
@@ -2233,7 +2265,7 @@ Views.meds=(v)=>{
       el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb',style:'margin-bottom:3px'},'Frequency'),freqSel),
       el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb',style:'margin-bottom:3px'},'Status'),statSel)));
     rc.append(el('div',{class:'row',style:'gap:8px;margin-top:7px'},
-      el('button',{class:'btn sm ghost',onclick:()=>Rx.logDoseNow(row)},'＋ Log a dose now'),
+      el('button',{class:'btn sm ghost',onclick:()=>Rx.logDose(row)},'＋ Log a dose'),
       el('div',{class:'spacer'}),
       el('button',{class:'btn sm ghost',onclick:()=>Rx.remove(row)},'✕ Remove')));
     card.append(rc); });
@@ -2246,9 +2278,13 @@ Views.meds=(v)=>{
   const today=dayKey(Date.now());
   const doses=[...D().medLogs,...D().supplementLogs].filter(e=>dayKey(e.ts)===today).sort((a,b)=>a.ts-b.ts);
   if(doses.length){ const dc=el('div',{class:'card'}); dc.append(el('h3',{style:'margin-top:0'},'Doses logged today'));
-    doses.forEach(e=>dc.append(el('div',{class:'row',style:'padding:5px 0'},
-      el('span',{style:'flex:1;font-size:13px'}, medName(e.medId)+' '+(e.dose===0?'(skipped)':((e.dose||'')+(typeof e.dose==='number'?(e.unit||'mg'):'')))),
-      el('span',{class:'muted',style:'font-size:11px'},fmtT(e.ts))))); v.append(dc); }
+    dc.append(el('p',{class:'muted',style:'font-size:11px;margin:2px 0 6px'},'Tap a time to correct it (e.g. an interval dose). Useful for meds like hydromorphone taken every few hours.'));
+    doses.forEach(e=>{ const coll=(D().supplementLogs||[]).includes(e)?'supplementLogs':'medLogs';
+      dc.append(el('div',{class:'row',style:'padding:6px 0;gap:8px;border-bottom:1px solid var(--line)'},
+      el('span',{style:'flex:1;font-size:13px'}, medName(e.medId)+' '+(e.dose===0?'(skipped)':((e.dose||'')+(typeof e.dose==='number'?(e.unit||'mg'):'')))+(e.changeType==='acute'?' · acute':'')),
+      el('button',{class:'btn sm ghost',style:'padding:5px 8px',onclick:()=>timeDateEditor('Time taken',e.ts,t=>{ e.ts=t; Store.saveNow(); render(); })}, fmtT(e.ts)+' ✎'),
+      el('button',{class:'btn sm ghost',style:'padding:5px 8px',onclick:()=>{ D()[coll]=D()[coll].filter(x=>x!==e); Store.saveNow(); toast('Dose removed'); render(); }},'✕'))); });
+    v.append(dc); }
 };
 
 /* ==========================================================================
