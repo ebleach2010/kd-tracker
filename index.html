@@ -271,6 +271,8 @@ const CONFIG = {
     {id:'childcare',label:'Child caretaking',color:'#ffcf5c'},
     {id:'pem',label:'PEM crash',color:'#b06bff'},
     {id:'icebrain',label:'Ice brain',color:'#22e3ff'},
+    // spans time like childcare: on while actively working a project / the business, off when done
+    {id:'working',label:'Working',color:'#3dff9a'},
   ],
   defaultEvents:['Relapse','Hospital stay','Major dissociative episode','PTSD flashback','Death in the family','Move'],
   defaultSelfCare:['Meditated','Cold plunge','Nap x1','Nap x2','Nap x3','Designated resting','Recreational activities'],
@@ -2616,7 +2618,7 @@ function toggleEditor(){ const c=el('div',{class:'card'}); c.append(el('div',{cl
   D().toggleTypes.forEach(t=>c.append(el('div',{class:'row',style:'padding:7px 0;border-bottom:1px solid var(--line)'},
     el('span',{style:`width:12px;height:12px;border-radius:50%;background:${t.color}`}),
     el('input',{type:'text',value:t.label,style:'flex:1',oninput:e=>{t.label=e.target.value;Store.save();}}),
-    ['illness','childcare','pem'].includes(t.id)?el('span',{class:'muted',style:'font-size:10px'},'built-in'):el('button',{class:'btn sm ghost',onclick:()=>{D().toggleTypes=D().toggleTypes.filter(x=>x!==t);Store.saveNow();render();}},'✕'))));
+    ['illness','childcare','pem','working'].includes(t.id)?el('span',{class:'muted',style:'font-size:10px'},'built-in'):el('button',{class:'btn sm ghost',onclick:()=>{D().toggleTypes=D().toggleTypes.filter(x=>x!==t);Store.saveNow();render();}},'✕'))));
   return c; }
 function strListEditor(title, key){ const c=el('div',{class:'card'}); c.append(el('div',{class:'row'},el('h2',{},title),el('div',{class:'spacer'}),
     el('button',{class:'btn sm',onclick:()=>{D()[key].push('New');Store.saveNow();render();}},'+ Add')));
