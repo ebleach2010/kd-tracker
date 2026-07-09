@@ -507,6 +507,18 @@ function confirmDlg(title,msg,onYes){
   scrim.addEventListener('click',e=>{ if(e.target===scrim) close(); });
   document.body.append(scrim);
 }
+/* Two-choice dialog with custom Yes/No labels (used by the erase-all flow). */
+function choiceDlg(title,msg,yesLabel,noLabel,onYes,onNo){
+  const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+  scrim.append(el('div',{class:'dlg'},
+    el('h3',{},title),
+    msg?el('p',{class:'muted',style:'line-height:1.55'},msg):null,
+    el('div',{class:'acts'},
+      el('button',{class:'btn ghost',onclick:()=>{close(); onNo&&onNo();}},noLabel||'No'),
+      el('button',{class:'btn primary',onclick:()=>{close(); onYes&&onYes();}},yesLabel||'Yes'))));
+  scrim.addEventListener('click',e=>{ if(e.target===scrim) close(); });
+  document.body.append(scrim);
+}
 /* Tabbed Time/Date editor with green confirm / red cancel (used by episode toggles). */
 function timeDateEditor(title, initTs, onConfirm){
   const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
@@ -1356,19 +1368,6 @@ Views.home=(v)=>{
       el('button',{class:'btn',style:'flex:1;border-color:rgba(255,207,92,.5);color:#ffeec2',onclick:()=>logBusy()}, '😐 Too busy')),
     el('button',{class:'btn ghost block',style:'margin-top:8px',onclick:()=>clearMenu()},'🧹 Clear…')));
 
-  // IVIG infusion day toggle — one-day marker (auto-off next day). Prompts for details.
-  const ivigToday=(D().ivig||[]).find(e=>dayKey(e.ts)===dayKey(Date.now()));
-  v.append(el('div',{class:'card'},
-    el('h2',{},'IVIG'),
-    el('div',{class:'tgl'+(ivigToday?' on':''),style:'margin-top:8px'},
-      el('div',{class:'sw',style:'cursor:pointer',onclick:()=>{
-        if(ivigToday){ D().ivig=D().ivig.filter(e=>e!==ivigToday); Store.saveNow(); render(); }
-        else IVIGLog.open(); }}),
-      el('div',{class:'tinfo'}, el('b',{},'Infusion today'),
-        el('span',{}, ivigToday?(cap(ivigToday.route)+' · '+ivigToday.schedule+' · '+ivigToday.setting):'Off — flip on your maintenance IVIG day'))),
-    (()=>{ const ctx=Derive.ivigContext(Date.now()); return ctx?el('p',{class:'muted',style:'font-size:11.5px;margin:8px 0 0'},
-      'Day '+ctx.daysSince+' since last infusion · modeled effect on board '+Math.round(ctx.total*100)+'% (acute '+Math.round(ctx.acute*100)+'% · sustained '+Math.round(ctx.sustained*100)+'%)'):null; })()));
-
   // episode toggles — flip the switch to start/stop; tap the right side to adjust the time/date
   v.append(el('div',{class:'card'},
     el('h2',{},'Active states'),
@@ -1386,6 +1385,20 @@ Views.home=(v)=>{
   v.append(el('p',{class:'muted',style:'text-align:center'},
     D().assessments.length+' assessments logged · '+
     (nii.calibrated?'NII active':'NII calibrating')));
+
+  // IVIG infusion day toggle — kept at the VERY BOTTOM (Eric's request): a one-day marker
+  // that auto-clears the next day; flipping on prompts for schedule/route/setting.
+  const ivigToday=(D().ivig||[]).find(e=>dayKey(e.ts)===dayKey(Date.now()));
+  v.append(el('div',{class:'card',style:'margin-bottom:16px'},
+    el('h2',{},'IVIG'),
+    el('div',{class:'tgl'+(ivigToday?' on':''),style:'margin-top:8px'},
+      el('div',{class:'sw',style:'cursor:pointer',onclick:()=>{
+        if(ivigToday){ D().ivig=D().ivig.filter(e=>e!==ivigToday); Store.saveNow(); render(); }
+        else IVIGLog.open(); }}),
+      el('div',{class:'tinfo'}, el('b',{},'Infusion today'),
+        el('span',{}, ivigToday?(cap(ivigToday.route)+' · '+ivigToday.schedule+' · '+ivigToday.setting):'Off — flip on your maintenance IVIG day'))),
+    (()=>{ const ctx=Derive.ivigContext(Date.now()); return ctx?el('p',{class:'muted',style:'font-size:11.5px;margin:8px 0 0'},
+      'Day '+ctx.daysSince+' since last infusion · modeled effect on board '+Math.round(ctx.total*100)+'% (acute '+Math.round(ctx.acute*100)+'% · sustained '+Math.round(ctx.sustained*100)+'%)'):null; })()));
 };
 function indexTile(name,val,color,note,big){
   return el('div',{style:`background:var(--bg2);border:1px solid var(--line);border-radius:13px;padding:${big?'14px':'12px'}`},
@@ -1443,6 +1456,94 @@ function clearMenu(){ const t=dayKey(Date.now()); const d=D();
   scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim);
 }
 function cap(s){ return s?s.charAt(0).toUpperCase()+s.slice(1):s; }
+
+/* ==========================================================================
+   ERASE-ALL FLOW (Settings) — guarded, multi-step, offers a shareable document.
+   Sequence: "Erase all data?" Y/N → "Export a copy first?" Y/N → (if yes, opens
+   a printable report window to Save-as-PDF / share) → a FINAL red "Confirm —
+   erase all data" gate is the only thing that actually wipes storage.
+   ========================================================================== */
+function eraseAllFlow(){
+  choiceDlg('Erase all data?',
+    'Every assessment, log, vital, event, episode and setting on this device will be permanently deleted. This cannot be undone.',
+    'Yes','No', step2, null);
+  function step2(){
+    choiceDlg('Export a copy before erasing?',
+      'Open a printable report you can save as a PDF or share to Files. A CSV is offered too. Strongly recommended — there is no other backup once this device is wiped.',
+      'Yes, export','No, skip',
+      ()=>{ ReportDoc.open(); step3(true); },
+      ()=>step3(false));
+  }
+  function step3(exported){
+    const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+    scrim.append(el('div',{class:'dlg'},
+      el('h3',{},'Ready to erase'),
+      el('p',{class:'muted',style:'line-height:1.55'}, exported
+        ? 'When your report/CSV is saved and the print window is closed, press the red button below to permanently erase everything.'
+        : 'No copy was exported. Press the red button below to permanently erase everything, or export first.'),
+      el('div',{class:'row',style:'gap:8px;margin-top:8px'},
+        el('button',{class:'btn sm ghost',style:'flex:1',onclick:()=>ReportDoc.open()},'🖨 Report (PDF)'),
+        el('button',{class:'btn sm ghost',style:'flex:1',onclick:()=>Export.csv('all')},'⤓ CSV'),
+        el('button',{class:'btn sm ghost',style:'flex:1',onclick:()=>Export.json()},'⤓ JSON')),
+      el('div',{class:'acts',style:'margin-top:14px'},
+        el('button',{class:'btn ghost',onclick:close},'Cancel'),
+        el('button',{class:'btn',style:'background:var(--red);border-color:var(--red);color:#fff',
+          onclick:()=>{ close(); Store.reset(); go('home'); toast('All data erased'); }},'Confirm — erase all data'))));
+    scrim.addEventListener('click',e=>{ if(e.target===scrim) close(); });
+    document.body.append(scrim);
+  }
+}
+/* Printable full-data report → opens in a new window; the print sheet lets the user
+   Save as PDF or share the file. Human-readable companion to the CSV/JSON backups. */
+const ReportDoc={
+  html(){
+    const d=D(); const scores=Score.seriesAll(); const nii=Neuro.series();
+    const niiById={}; nii.forEach(n=>niiById[n.id]=n.nii);
+    const esc=s=>String(s==null?'':s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]);
+    const rows=[...d.assessments].sort((a,b)=>a.ts-b.ts);
+    const cell=(k)=>k!=null&&k!==''?k:'';
+    let asmt=''; rows.forEach(a=>{ const sc=scores.find(x=>x.id===a.id)||{}; const s=a.sliders||{};
+      asmt+='<tr><td>'+dayKey(a.ts)+'<br><span class=t>'+fmtT(a.ts)+'</span></td><td>'+esc(a.cadence)+'</td>'+
+        '<td class=n>'+cell(sc.qol!=null?Math.round(sc.qol):'')+'</td><td class=n>'+cell(sc.cog!=null?Math.round(sc.cog):'')+'</td>'+
+        '<td class=n>'+cell(niiById[a.id]!=null?Math.round(niiById[a.id]):'')+'</td>'+
+        '<td class=n>'+cell(s.fatigue)+'</td><td class=n>'+cell(s.brainFog)+'</td><td class=n>'+cell(s.cogFatigue)+'</td>'+
+        '<td>'+esc(a.notes||'')+'</td></tr>'; });
+    // medication / supplement doses
+    const allMeds=[...(d.medLogs||[]).map(e=>({...e,kind:'med'})),...(d.supplementLogs||[]).map(e=>({...e,kind:'supp'}))].sort((a,b)=>a.ts-b.ts);
+    let meds=''; allMeds.forEach(e=>meds+='<tr><td>'+dayKey(e.ts)+' '+fmtT(e.ts)+'</td><td>'+esc(medName(e.medId))+'</td><td>'+esc(e.dose===0?'skipped':((e.dose||'')+(e.unit||'')))+'</td><td>'+esc(e.deviation||e.changeType||'')+'</td></tr>');
+    // vitals — standalone logs + glucose captured inside assessments (full record)
+    const vitals=[...(d.vitals||[])];
+    rows.forEach(a=>(a.glucose||[]).forEach(g=>vitals.push({type:'glucose',ts:g.ts||a.ts,value:g.value,slot:g.slot,rel:g.rel})));
+    if(rows.some(a=>a.bp)) rows.forEach(a=>{ if(a.bp) vitals.push({type:'bp',ts:a.ts,...a.bp}); });
+    let vit=''; vitals.sort((a,b)=>a.ts-b.ts).forEach(x=>vit+='<tr><td>'+dayKey(x.ts)+' '+fmtT(x.ts)+'</td><td>'+(x.type==='glucose'?('Glucose '+x.value+' mg/dL'+(x.slot?' ('+x.slot+')':'')+(x.rel&&x.rel!=='—'?' · '+esc(x.rel):'')):('BP '+x.sys+'/'+x.dia+(x.pulse?' · '+x.pulse+' bpm':'')))+'</td></tr>');
+    // events, ivig, episodes
+    let ev=''; (d.events||[]).slice().sort((a,b)=>(a.date<b.date?-1:1)).forEach(e=>ev+='<tr><td>'+esc(e.date)+'</td><td>'+esc(e.type)+'</td><td>'+esc(e.note||'')+'</td></tr>');
+    let ivg=''; (d.ivig||[]).slice().sort((a,b)=>a.ts-b.ts).forEach(e=>ivg+='<tr><td>'+dayKey(e.ts)+'</td><td>'+esc(cap(e.route))+'</td><td>'+esc(e.schedule)+'</td><td>'+esc(e.setting)+'</td></tr>');
+    let eps=''; (d.episodes||[]).slice().sort((a,b)=>a.startTs-b.startTs).forEach(e=>eps+='<tr><td>'+esc(e.kind)+'</td><td>'+fmtDT(e.startTs)+'</td><td>'+(e.endTs?fmtDT(e.endTs):'(open)')+'</td></tr>');
+    const sect=(title,head,body)=>body?('<h2>'+title+'</h2><table><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+body+'</tbody></table>'):'';
+    const style='body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:24px;font-size:12px}'+
+      'h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:22px 0 6px;border-bottom:2px solid #333;padding-bottom:3px}'+
+      '.sub{color:#666;margin:0 0 14px;font-size:12px}table{border-collapse:collapse;width:100%;margin-bottom:8px}'+
+      'th,td{border:1px solid #ccc;padding:4px 6px;text-align:left;vertical-align:top}th{background:#f0f0f0;font-size:11px}'+
+      'td.n{text-align:center}span.t{color:#888;font-size:10px}@media print{h2{page-break-after:avoid}tr{page-break-inside:avoid}}';
+    return '<!doctype html><html><head><meta charset="utf-8"><title>NeuroTrack report '+dayKey(Date.now())+'</title><style>'+style+'</style></head><body>'+
+      '<h1>NeuroTrack — full data report</h1>'+
+      '<p class="sub">Generated '+fmtDT(Date.now())+' · '+rows.length+' assessments · QOL/Cognitive higher = better, NII higher = worse · symptom sliders 1–10</p>'+
+      sect('Assessments & indices',['Date','Type','QOL','Cog','NII','Fatig','Fog','CogFt','Notes'],asmt)+
+      sect('Medication & supplement doses',['When','Item','Dose','Change'],meds)+
+      sect('Vitals',['When','Reading'],vit)+
+      sect('IVIG infusions',['Date','Route','Schedule','Setting'],ivg)+
+      sect('Episodes',['State','Start','End'],eps)+
+      sect('Life events',['Date','Type','Note'],ev)+
+      '<p class="sub" style="margin-top:20px">Use your browser/OS print dialog to Save as PDF or share. This is a personal record, not a medical document.</p>'+
+      '</body></html>';
+  },
+  open(){ const w=window.open('','_blank');
+    if(!w){ toast('Allow pop-ups, then tap Report again'); return; }
+    w.document.write(this.html()); w.document.close(); w.focus();
+    setTimeout(()=>{ try{ w.print(); }catch(e){} },500);
+  },
+};
 const IVIGLog={ open(){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
   let schedule='biweekly', route='iv', setting='home';
   const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'IVIG infusion today'));
@@ -2438,7 +2539,7 @@ Views.settings=(v)=>{
     el('button',{class:'btn sm',onclick:()=>Export.csv($('#csvrange').value)},'⤓ Export CSV'),
     el('button',{class:'btn sm',onclick:()=>Export.json()},'⤓ Backup JSON'),
     el('button',{class:'btn sm ghost',onclick:()=>Export.importJSON()},'⤒ Restore JSON'),
-    el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Erase ALL data?','This cannot be undone. Back up first.',()=>{Store.reset();go('home');})},'Erase all')));
+    el('button',{class:'btn sm ghost',style:'border-color:rgba(255,92,107,.5);color:#ffd7dc',onclick:()=>eraseAllFlow()},'Erase all')));
   v.append(dc);
   // the full behind-the-scenes methods/research page + sources link (both off the tab bar)
   v.append(el('button',{class:'btn block',style:'margin-bottom:8px',onclick:()=>go('science')},'🔬 The science, in the open'));
