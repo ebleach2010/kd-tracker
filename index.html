@@ -28,6 +28,8 @@
   font-size:16px;
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+/* prevent double-tap-to-zoom / stray scroll on taps */
+button,.tgl,.slider,.pill,.seg,label,a,input,select{touch-action:manipulation}
 html,body{margin:0; padding:0; height:100%; background:var(--bg); color:var(--ink);
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
   -webkit-font-smoothing:antialiased; overscroll-behavior:none}
@@ -232,6 +234,7 @@ const CONFIG = {
     {key:'maritalStress',label:'Marital relationship stress'},
     {key:'socializing',label:'Socializing amount'},
     {key:'rumination',label:'Rumination'},
+    {key:'agitation',label:'Agitation'},
     {key:'iceBrain',label:'Ice Brain (cold-brain feeling)'},
     {key:'pem',label:'PEM severity (post-exertional)'},
     {key:'nicotine',label:'Nicotine intake',range:4},
@@ -272,7 +275,7 @@ const CONFIG = {
     fatigue:{w:1.0,o:1}, cogFatigue:{w:1.0,o:1}, brainFog:{w:1.0,o:1},
     sleepQuality:{w:.8,o:-1}, emotEngagement:{w:.9,o:-1}, pem:{w:.7,o:1},
     depression:{w:.8,o:1}, overstim:{w:.5,o:1}, iceBrain:{w:.2,o:1,flag:'experimental'},
-    rumination:{w:.2,o:1}, anxiety:{w:.2,o:1}, visualDistortion:{w:.3,o:1},
+    rumination:{w:.2,o:1}, anxiety:{w:.2,o:1}, visualDistortion:{w:.3,o:1}, agitation:{w:.4,o:1},
     // objective (weekly) — reverse where higher=better performance
     obj_processingSpeed:{w:1.0,o:1}, obj_rtVariability:{w:.9,o:1},
     obj_workingMemory:{w:.6,o:1}, obj_attention:{w:.6,o:1}, obj_recall:{w:.4,o:1},
@@ -284,7 +287,7 @@ const CONFIG = {
     fatigue:{t:'qol',w:.9}, sleepQuality:{t:'qol',w:.8,o:-1}, pem:{t:'qol',w:.7},
     socializing:{t:'qol',w:.3,o:-1}, emotEngagement:{t:'qol',w:.5,o:-1}, overstim:{t:'qol',w:.4},
     cogFatigue:{t:'cog',w:.9}, brainFog:{t:'cog',w:.9}, visualDistortion:{t:'cog',w:.5},
-    iceBrain:{t:'both',w:.3}, rumination:{t:'qol',w:.3},
+    iceBrain:{t:'both',w:.3}, rumination:{t:'qol',w:.3}, agitation:{t:'qol',w:.6},
     // Overall mood carries strong QOL weight (external factors can make an "okay day"
     // even when cognition/inflammation are poor) but little cognitive weight.
     moodEnd:{t:'qol',w:1.2,o:-1}, moodWake:{t:'qol',w:.6,o:-1},
@@ -320,6 +323,7 @@ function buildDesc(){
   D.maritalStress=g('Connected, at ease','Some friction','Severe relationship strain');
   D.socializing=g('No social contact','A moderate amount','Constant intense socializing');
   D.rumination=g('Mind quiet','Looping on some things','Trapped in relentless loops');
+  D.agitation=g('None — calm & settled','Restless, on edge, irritable','Severe agitation, can\'t sit still');
   D.iceBrain=g('No cold-brain sensation','Noticeable cold feeling','Intense freezing-brain feeling');
   D.pem=g('No crash','Moderate post-exertional crash','Total crash, wiped out for days');
   D.nicotine=(()=>{const a=Array(5).fill('');a[1]='None';a[2]='Light';a[3]='Moderate';a[4]='Heavy';return a;})();
@@ -354,7 +358,7 @@ const Store = (()=>{
     weights:{alpha:.25}, // subjective-attenuation strength
     priors:JSON.parse(JSON.stringify(CONFIG.priors)),
     assessments:[], medLogs:[], supplementLogs:[], vitals:[], moodLogs:[],
-    events:[], episodes:[],
+    events:[], episodes:[], regimen:[], regimenLog:[],
     literatureCache:null, prioReviewed:null,
   });
   let data;
@@ -425,13 +429,16 @@ const State = { tab:'home', sub:null };
 const Views = {}; // Views[tab] = (mount)=>{}
 const TABS=[
   {id:'home', label:'Home', ic:'◎'},
+  {id:'meds', label:'Meds', ic:'💊'},
   {id:'trends', label:'Trends', ic:'📈'},
   {id:'insights', label:'Insights', ic:'✦'},
   {id:'history', label:'History', ic:'▦'},
   {id:'events', label:'Events', ic:'✚'},
-  {id:'sources', label:'Sources', ic:'❋'},
   {id:'settings', label:'Settings', ic:'⚙'},
 ];
+// medication frequency options for the regimen table
+const FREQS=[['q1h','Q1hr'],['q2h','Q2hr'],['q3h','Q3hr'],['q4h','Q4hr'],['q5h','Q5hr'],['q6h','Q6hr'],['q7h','Q7hr'],['q8h','Q8hr'],['1x','1×/day'],['2x','2×/day'],['stopped','Stopped'],['acute','Acute (fluctuates)']];
+const FREQ_ORD={q1h:1,q2h:2,q3h:3,q4h:4,q5h:5,q6h:6,q7h:7,q8h:8,'1x':9,'2x':10,stopped:0,acute:11};
 function go(tab,sub){ State.tab=tab; State.sub=sub||null; render(); window.scrollTo(0,0); }
 function render(){
   const v=$('#view'); v.innerHTML='';
@@ -454,6 +461,32 @@ function confirmDlg(title,msg,onYes){
       el('button',{class:'btn primary',onclick:()=>{close(); onYes();}},'Yes, save'))));
   scrim.addEventListener('click',e=>{ if(e.target===scrim) close(); });
   document.body.append(scrim);
+}
+/* Tabbed Time/Date editor with green confirm / red cancel (used by episode toggles). */
+function timeDateEditor(title, initTs, onConfirm){
+  const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+  let ts=initTs||Date.now(); let tab='time';
+  const dlg=el('div',{class:'dlg'}); const body=el('div',{});
+  const draw=()=>{ body.innerHTML='';
+    body.append(el('div',{class:'seg',style:'margin-bottom:12px;display:flex;width:100%'},
+      el('button',{class:tab==='time'?'on':'',style:'flex:1',onclick:()=>{tab='time';draw();}},'Time'),
+      el('button',{class:tab==='date'?'on':'',style:'flex:1',onclick:()=>{tab='date';draw();}},'Date')));
+    if(tab==='time'){ const d=new Date(ts);
+      body.append(el('label',{class:'fld'},el('div',{class:'lb'},'Time'),
+        el('input',{type:'time',value:String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'),
+          onchange:e=>{ if(!e.target.value)return; const [h,m]=e.target.value.split(':').map(Number); const nd=new Date(ts); nd.setHours(h,m,0,0); ts=nd.getTime(); draw(); }})));
+    } else { body.append(el('label',{class:'fld'},el('div',{class:'lb'},'Date'),
+        el('input',{type:'date',value:dayKey(ts),max:dayKey(Date.now()),
+          onchange:e=>{ if(!e.target.value)return; const [y,mo,dd]=e.target.value.split('-').map(Number); const nd=new Date(ts); nd.setFullYear(y,mo-1,dd); ts=nd.getTime(); draw(); }})));
+    }
+    body.append(el('div',{class:'muted',style:'font-size:12.5px'},'Marked: '+fmtDT(ts)));
+  };
+  draw();
+  dlg.append(el('h3',{},title), body,
+    el('div',{class:'acts'},
+      el('button',{class:'btn',style:'flex:1;border-color:var(--red);color:#ffd7dc',onclick:close},'✕ Cancel'),
+      el('button',{class:'btn',style:'flex:1;border-color:var(--green);color:#d7ffe9;background:linear-gradient(180deg,rgba(61,255,154,.22),transparent)',onclick:()=>{ close(); onConfirm(ts); }},'✓ Confirm')));
+  scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim);
 }
 function toast(msg){
   const t=el('div',{style:'position:fixed;left:50%;bottom:calc(var(--safe-b) + 78px);transform:translateX(-50%);z-index:90;background:var(--panel2);border:1px solid var(--line2);padding:11px 16px;border-radius:12px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.5)'},msg);
@@ -662,7 +695,7 @@ const Score = {
 // Thursday morning baseline. Excludes "today"-oriented items (meals, self-care,
 // today's exertion, socializing, nicotine, today's external stressors, end-of-day mood).
 const AM_SLIDERS=['fatigue','pem','cogFatigue','brainFog','iceBrain','visualDistortion',
-  'overstim','depression','anxiety','rumination','emotEngagement','generalStress','maritalStress'];
+  'overstim','depression','anxiety','agitation','rumination','emotEngagement','generalStress','maritalStress'];
 
 const Assess = {
   active:null,
@@ -677,54 +710,47 @@ const Assess = {
     this.render();
   },
   buildSteps(cadence, variant){
-    // Thursday MORNING full — clean pre-medication baseline
-    if(cadence==='weekly' && variant==='am'){
-      const M=[];
-      M.push({t:'sleep', title:'Sleep (last night)', note:'Morning baseline — best taken right after waking, BEFORE any cognitive-enhancing meds.'});
-      M.push({t:'vitals', title:'Wake vitals', wakeOnly:true});
-      for(let i=0;i<AM_SLIDERS.length;i+=6) M.push({t:'sliders', title:'Waking state ('+(Math.floor(i/6)+1)+')', keys:AM_SLIDERS.slice(i,i+6)});
-      M.push({t:'moodwake', title:'Morning mood'});
-      M.push({t:'medcontext', title:'Medications on board'});
-      M.push({t:'cog', test:'stroop', title:'Stroop — name the ink color'});
-      M.push({t:'cog', test:'symbol', title:'Symbol–Digit — processing speed'});
-      M.push({t:'cog', test:'span', title:'Digit Span — working memory'});
-      M.push({t:'cog', test:'trails', title:'Trails B — attention & switching'});
-      M.push({t:'cog', test:'search', title:'Visual Search — perception'});
-      M.push({t:'encode', title:'Memory — study these words'});
-      M.push({t:'quiz', quiz:'dass21', title:'DASS-21'});
-      M.push({t:'quiz', quiz:'pcl5', title:'PCL-5 (PTSD)'});
-      M.push({t:'quiz', quiz:'ders16', title:'DERS-16 (emotion regulation)'});
-      if(this.bfiDue()) M.push({t:'quiz', quiz:'bfi10', title:'BFI-10 (personality)'});
-      M.push({t:'recall', title:'Memory — recall the words'});
-      M.push({t:'notes', title:'Final notes'});
-      return M;
-    }
     const S=[];
-    S.push({t:'exertion', title:'Context — exertion today'});
-    S.push({t:'meds', title:'Medications & supplements'});
-    S.push({t:'vitals', title:'Vitals — glucose & blood pressure'});
-    S.push({t:'meals', title:'Meals'});
-    S.push({t:'selfcare', title:'Self-care today'});
-    S.push({t:'sleep', title:'Sleep (last night)'});
-    // slider groups
-    const sl=CONFIG.sliders;
-    for(let i=0;i<sl.length;i+=6) S.push({t:'sliders', title:'How are you? ('+(Math.floor(i/6)+1)+')', from:i, to:Math.min(i+6,sl.length)});
-    if(cadence==='weekly'){
+    // QUICK check-in — short, any time, logged at start time
+    if(cadence==='quick'){
+      S.push({t:'quick', title:'Quick check-in'});
+      S.push({t:'notes', title:'Notes'});
+      return S;
+    }
+    // MORNING (comprehensive daily, or weekly full baseline) — no "today" items
+    const isMorning = variant==='am';
+    const isFull = cadence==='weekly';
+    if(isMorning){
+      S.push({t:'sleep', title:'Sleep (last night)', note:isFull?'Baseline — best taken right after waking, BEFORE any cognitive-enhancing meds.':'Morning check-in.'});
+      S.push({t:'vitals', title:'Wake vitals', wakeOnly:true});
+      for(let i=0;i<AM_SLIDERS.length;i+=6) S.push({t:'sliders', title:'Waking state ('+(Math.floor(i/6)+1)+')', keys:AM_SLIDERS.slice(i,i+6)});
+      S.push({t:'moodwake', title:'Morning mood'});
+    } else {
+      // EVENING (comprehensive daily, or weekly full baseline)
+      S.push({t:'exertion', title:'Context — exertion today'});
+      S.push({t:'vitals', title:'Vitals — glucose & blood pressure'});
+      S.push({t:'meals', title:'Meals'});
+      S.push({t:'selfcare', title:'Self-care today'});
+      S.push({t:'sleep', title:'Sleep (last night)'});
+      const sl=CONFIG.sliders;
+      for(let i=0;i<sl.length;i+=6) S.push({t:'sliders', title:'How are you? ('+(Math.floor(i/6)+1)+')', from:i, to:Math.min(i+6,sl.length)});
+    }
+    // FULL BASELINE only: cognitive battery + questionnaires
+    if(isFull){
       S.push({t:'medcontext', title:'Medications on board'});
       S.push({t:'cog', test:'stroop', title:'Stroop — name the ink color'});
       S.push({t:'cog', test:'symbol', title:'Symbol–Digit — processing speed'});
       S.push({t:'cog', test:'span', title:'Digit Span — working memory'});
       S.push({t:'cog', test:'trails', title:'Trails B — attention & switching'});
       S.push({t:'cog', test:'search', title:'Visual Search — perception'});
-      S.push({t:'encode', title:'Memory — study these words'}); // encode early
+      S.push({t:'encode', title:'Memory — study these words'});
       S.push({t:'quiz', quiz:'dass21', title:'DASS-21'});
       S.push({t:'quiz', quiz:'pcl5', title:'PCL-5 (PTSD)'});
       S.push({t:'quiz', quiz:'ders16', title:'DERS-16 (emotion regulation)'});
-      // BFI-10 monthly
       if(this.bfiDue()) S.push({t:'quiz', quiz:'bfi10', title:'BFI-10 (personality)'});
       S.push({t:'recall', title:'Memory — recall the words'});
     }
-    S.push({t:'mood', title:'Overall day'});
+    if(!isMorning) S.push({t:'mood', title:'Overall day'});
     S.push({t:'notes', title:'Final notes'});
     return S;
   },
@@ -896,6 +922,12 @@ const Assess = {
       if(c.key==='nicotine'||c.key==='sleepQuality')return; // shown elsewhere
       b.append(makeSlider(c, d.sliders[c.key], v=>d.sliders[c.key]=v));
     });
+    b.append(this.footer());
+  },
+  step_quick(b){ const d=this.active.draft;
+    b.append(el('p',{class:'muted',style:'margin-top:0'},'A fast read on how you are right now — logged at '+fmtT(d.ts)+'. Do these any time of day.'));
+    b.append(makeSlider({key:'moodEnd',label:'Overall wellbeing right now (terrible → amazing)'}, d.sliders.moodEnd, v=>d.sliders.moodEnd=v));
+    ['agitation','iceBrain','fatigue','brainFog','pem','anxiety','overstim','depression'].forEach(k=>{ const c=CONFIG.sliders.find(s=>s.key===k); if(c) b.append(makeSlider(c,d.sliders[k],v=>d.sliders[k]=v)); });
     b.append(this.footer());
   },
   step_moodwake(b){ const d=this.active.draft;
@@ -1170,26 +1202,25 @@ const QUIZ = {
    ========================================================================== */
 Views.home=(v)=>{
   v.append(header('NeuroTrack','post-AE function tracker'));
-  // due banners — Thursday morning (pre-med baseline) + evening full
+  // due banners — comprehensive Morning / Evening assessments (daily), + Thursday full baseline
   const now=new Date(); const isWDay=now.getDay()===D().settings.weeklyDow; const hr=now.getHours();
-  if(isWDay && hr<12 && !hasFullToday('am'))
-    v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'🌅'),
-      el('div',{class:'bt'}, el('b',{},'Morning full — pre-med baseline'), el('span',{},'Take BEFORE cognitive meds · clean cognitive + symptom baseline')),
+  // Full baseline (Thursday, cognitive battery) takes priority when due
+  if(isWDay && hr<12 && !hasToday('weekly','am'))
+    v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'🧪'),
+      el('div',{class:'bt'}, el('b',{},'Full baseline — morning (pre-med)'), el('span',{},'Thursday · cognitive battery + questionnaires · before cognitive meds')),
       el('button',{class:'btn pink sm',onclick:()=>Assess.start('weekly',null,'am')},'Start')));
-  if(isWDay && hr>=12 && !hasFullToday('pm'))
-    v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'🌙'),
-      el('div',{class:'bt'}, el('b',{},'Evening full assessment'), el('span',{},'Thursday evening · full cognitive battery')),
+  else if(hr<12 && !hasToday('daily','am'))
+    v.append(el('div',{class:'banner due'}, el('span',{class:'bic'},'🌅'),
+      el('div',{class:'bt'}, el('b',{},'Morning assessment'), el('span',{},'Comprehensive waking check-in · sleep, symptoms, mood')),
+      el('button',{class:'btn sm',onclick:()=>Assess.start('daily',null,'am')},'Start')));
+  if(isWDay && hr>=12 && !hasToday('weekly','pm'))
+    v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'🧪'),
+      el('div',{class:'bt'}, el('b',{},'Full baseline — evening'), el('span',{},'Thursday evening · cognitive battery + questionnaires')),
       el('button',{class:'btn pink sm',onclick:()=>Assess.start('weekly',null,'pm')},'Start')));
-  if(!isWDay && isWeeklyDue())
-    v.append(el('div',{class:'banner'}, el('span',{class:'bic'},'🧪'),
-      el('div',{class:'bt'}, el('b',{},'Weekly full overdue'), el('span',{},'It\'s been over a week since a full assessment')),
-      el('button',{class:'btn sm',onclick:()=>Assess.start('weekly',null,'pm')},'Start')));
-  if(!hasWakeMoodToday()) v.append(el('div',{class:'banner due'}, el('span',{class:'bic'},'🌅'),
-    el('div',{class:'bt'}, el('b',{},'Morning mood'), el('span',{},'A quick 1–10 read on waking (with your 8am glucose)')),
-    el('button',{class:'btn sm',onclick:()=>MoodLog.openWake()},'Log')));
-  if(!hasDailyToday()) v.append(el('div',{class:'banner due'}, el('span',{class:'bic'},'📝'),
-    el('div',{class:'bt'}, el('b',{},'End-of-day check-in'), el('span',{},'~5–8 min · mood, sliders, meds, meals, vitals')),
-    el('button',{class:'btn sm',onclick:()=>Assess.start('daily')},'Start')));
+  else if(hr>=17 && !hasToday('daily','pm'))
+    v.append(el('div',{class:'banner due'}, el('span',{class:'bic'},'🌙'),
+      el('div',{class:'bt'}, el('b',{},'Evening assessment'), el('span',{},'Comprehensive end-of-day · symptoms, meals, self-care, mood')),
+      el('button',{class:'btn sm',onclick:()=>Assess.start('daily',null,'pm')},'Start')));
 
   // headline indices
   const s=Score.seriesAll(); const latest=s[s.length-1]; const nii=Neuro.series();
@@ -1206,24 +1237,31 @@ Views.home=(v)=>{
   // quick start
   v.append(el('div',{class:'card'},
     el('h2',{},'Log now'),
+    el('button',{class:'btn primary block',style:'margin-top:8px',onclick:()=>Assess.start('quick')},'⚡ Quick check-in'),
     el('div',{class:'grid2',style:'margin-top:8px'},
-      el('button',{class:'btn',onclick:()=>Assess.start('daily')},'📝 Daily check-in'),
-      el('button',{class:'btn',onclick:()=>Assess.start('weekly',null,'am')},'🌅 Full — AM baseline'),
-      el('button',{class:'btn',onclick:()=>Assess.start('weekly',null,'pm')},'🌙 Full — evening'),
-      el('button',{class:'btn ghost',onclick:()=>MoodLog.openWake()},'🌅 Morning mood'),
-      el('button',{class:'btn ghost',onclick:()=>QuickLog.open('med')},'💊 Quick med/supp'),
-      el('button',{class:'btn ghost',onclick:()=>QuickLog.open('vital')},'🩸 Glucose / BP')),
+      el('button',{class:'btn',onclick:()=>Assess.start('daily',null,'am')},'🌅 Morning assessment'),
+      el('button',{class:'btn',onclick:()=>Assess.start('daily',null,'pm')},'🌙 Evening assessment'),
+      el('button',{class:'btn ghost',onclick:()=>Assess.start('weekly',null,'am')},'🧪 Full baseline (AM)'),
+      el('button',{class:'btn ghost',onclick:()=>Assess.start('weekly',null,'pm')},'🧪 Full baseline (PM)'),
+      el('button',{class:'btn ghost',onclick:()=>QuickLog.open('vital')},'🩸 Glucose / BP'),
+      el('button',{class:'btn ghost',onclick:()=>go('meds')},'💊 Meds')),
     el('button',{class:'btn block',style:'margin-top:10px;border-color:rgba(255,92,107,.5);color:#ffd7dc',
       onclick:()=>logUnwell()}, '😞 Too unwell to log today')));
 
-  // episode toggles
+  // episode toggles — flip the switch to start/stop; tap the right side to adjust the time/date
   v.append(el('div',{class:'card'},
     el('h2',{},'Active states'),
-    el('p',{class:'muted',style:'margin:4px 0 10px'},'Flip on when it starts, off when it ends. Times are editable later.'),
+    el('p',{class:'muted',style:'margin:4px 0 10px'},'Flip the switch on/off. Tap the right side to adjust the marked time or date.'),
     ...D().toggleTypes.map(t=>{ const open=Derive.openEpisode(t.id);
-      return el('div',{class:'tgl'+(open?' on':''),onclick:()=>{ Toggles.flip(t.id); render(); }},
-        el('div',{class:'sw'}), el('div',{class:'tinfo'}, el('b',{},t.label),
-          el('span',{},open?'On since '+fmtDT(open.startTs):'Off'))); })));
+      const lastClosed=[...D().episodes].filter(e=>e.kind===t.id&&e.endTs).sort((a,b)=>b.endTs-a.endTs)[0];
+      const editable=open||lastClosed;
+      return el('div',{class:'tgl'+(open?' on':'')},
+        el('div',{class:'sw',style:'cursor:pointer',onclick:()=>{ Toggles.flip(t.id); render(); }}),
+        el('div',{class:'tinfo',style:editable?'cursor:pointer':'',onclick:()=>{ if(!editable)return;
+            if(open) timeDateEditor('Adjust "'+t.label+'" start', open.startTs, ts=>{ open.startTs=ts; Store.saveNow(); render(); });
+            else timeDateEditor('Adjust "'+t.label+'" end', lastClosed.endTs, ts=>{ lastClosed.endTs=ts; Store.saveNow(); render(); }); }},
+          el('b',{},t.label),
+          el('span',{}, open?('On since '+fmtDT(open.startTs)+'  ›') : ('Off'+(lastClosed?(' · ended '+fmtDT(lastClosed.endTs)+'  ›'):''))))); })));
 
   v.append(el('p',{class:'muted',style:'text-align:center'},
     D().assessments.length+' assessments logged · '+
@@ -1238,7 +1276,8 @@ function indexTile(name,val,color,note,big){
 }
 function hasDailyToday(){ const t=dayKey(Date.now()); return D().assessments.some(a=>dayKey(a.ts)===t); }
 function hasWakeMoodToday(){ const t=dayKey(Date.now()); return D().moodLogs.some(m=>m.type==='wake'&&dayKey(m.ts)===t); }
-function hasFullToday(variant){ const t=dayKey(Date.now()); return D().assessments.some(a=>a.cadence==='weekly'&&dayKey(a.ts)===t&&(variant?((a.variant||'pm')===variant):true)); }
+function hasFullToday(variant){ return hasToday('weekly',variant); }
+function hasToday(cadence,variant){ const t=dayKey(Date.now()); return D().assessments.some(a=>a.cadence===cadence&&dayKey(a.ts)===t&&(variant?((a.variant||'pm')===variant):true)); }
 function logUnwell(){ const ts=Date.now();
   D().assessments.push({id:uid(),ts,cadence:'unwell',tooUnwell:true,sliders:{},exertion:{},sleep:{},meals:{},meds:[],supplements:[],glucose:[],selfCare:[],noteTags:[],notes:'Too unwell to input data'});
   Store.saveNow(); toast('Logged as a crash day — rest up 🤍'); render(); }
@@ -1326,6 +1365,7 @@ const Insights = {
     const days=Object.keys(byDay).sort();
     const stopWin={}; D().meds.forEach(m=>stopWin[m.id]=Derive.medStopWindow(m.id));
     const noteTags=this.noteTags();
+    const regimenMeds=[...new Set(D().regimenLog.map(r=>r.medId))];
     return days.map(k=>{
       const list=byDay[k]; const ts=list[0].ts; const v={ _day:k, _ts:ts };
       // average sliders
@@ -1372,6 +1412,11 @@ const Insights = {
       // ad-hoc one-liner note tags (lightly weighted extra variables)
       const dayNotes=new Set(); list.forEach(a=>(a.noteTags||[]).forEach(t=>dayNotes.add(t.trim().toLowerCase())));
       noteTags.forEach(t=>{ v['note_'+t]=dayNotes.has(t)?1:0; });
+      // regimen state in effect on this day (from the Meds tab change-log)
+      regimenMeds.forEach(mid=>{ const st=rxStateOn(mid, ts); if(!st)return;
+        v['rx_'+mid+'_active']=(st.status==='stopped'||st.freq==='stopped')?0:1;
+        v['rx_'+mid+'_freqN']=FREQ_ORD[st.freq]!=null?FREQ_ORD[st.freq]:0;
+        if(typeof st.dose==='number')v['rx_'+mid+'_dose']=st.dose; });
       // derived episode/IVIG
       v.daysSinceIVIG=Derive.daysSinceIVIG(ts);
       D().toggleTypes.forEach(t=>{ v['ep_'+t.id+'_active']=Derive.episodeActive(t.id,ts)?1:0;
@@ -1409,6 +1454,10 @@ const Insights = {
     D().toggleTypes.forEach(t=>{ V['ep_'+t.id+'_active']={label:t.label+' (active)',kind:'predictor'};
       V['ep_'+t.id+'_after']={label:'Days since '+t.label+' ended',kind:'predictor'}; });
     D().meds.filter(m=>m.cogEnhancer).forEach(m=>{ V['cogmed_'+m.id+'_effect']={label:m.name+' effect level at test',kind:'predictor'}; });
+    [...new Set(D().regimenLog.map(r=>r.medId))].forEach(mid=>{ const nm=medName(mid);
+      V['rx_'+mid+'_freqN']={label:nm+' frequency (regimen)',kind:'predictor'};
+      V['rx_'+mid+'_active']={label:nm+' active (regimen)',kind:'predictor'};
+      V['rx_'+mid+'_dose']={label:nm+' dose (regimen)',kind:'predictor'}; });
     V.obj_processingSpeed={label:'Processing speed (obj)',kind:'objective'}; V.obj_rtVariability={label:'RT variability (obj)',kind:'objective'};
     V.obj_workingMemory={label:'Working memory (obj)',kind:'objective'}; V.obj_attention={label:'Attention (obj)',kind:'objective'};
     return V;
@@ -1703,6 +1752,65 @@ const Lit={
 };
 
 /* ==========================================================================
+   MEDS TAB — daily regimen table (rows: med · dose · frequency · status)
+   "Continuing" rows persist and apply every day until changed; "acute" fluctuates;
+   "stopped" is discontinued. Actual dose events log to medLogs (for PK + streaks).
+   ========================================================================== */
+function rxStateOn(medId, ts){ let best=null; const cut=ts+DAY; D().regimenLog.forEach(r=>{ if(r.medId===medId && r.ts<=cut){ if(!best||r.ts>best.ts) best=r; } }); return best; }
+const Rx = {
+  logChange(row){ D().regimenLog.push({ts:Date.now(), medId:row.medId, dose:row.dose, freq:row.freq, status:row.status}); },
+  addRow(){ const m=D().meds[0]||{id:'',doses:[]}; const row={id:uid(), medId:m.id, dose:(m.baselineDose!=null?m.baselineDose:(m.doses&&m.doses[0])||''), freq:'1x', status:'continuing'};
+    D().regimen.push(row); this.logChange(row); Store.saveNow(); render(); },
+  remove(row){ D().regimen=D().regimen.filter(r=>r!==row); Store.saveNow(); render(); },
+  logDoseNow(row){ const m=D().meds.find(x=>x.id===row.medId);
+    D().medLogs.push({medId:row.medId, dose:row.dose===''?0:(isNaN(+row.dose)?row.dose:+row.dose), unit:(m&&m.unit)||'mg', changeType:row.freq==='acute'?'acute':'chronic', ts:Date.now(), purpose:m&&m.purpose, deviation:(row.dose===0||row.dose==='')?'missed':'added'});
+    Store.saveNow(); toast('Dose logged · '+fmtT(Date.now())); render(); },
+};
+Views.meds=(v)=>{
+  v.append(header('Meds',''));
+  v.append(el('p',{class:'muted',style:'margin-top:0'},'Your daily regimen. "Continuing" meds auto-apply every day until you change them. "Acute" means the dose/timing fluctuates — log those as they happen. Changes here are tracked for correlation.'));
+  const card=el('div',{class:'card'});
+  card.append(el('div',{class:'row'}, el('h2',{},'Today\'s regimen'), el('div',{class:'spacer'}),
+    el('button',{class:'btn sm',onclick:()=>Rx.addRow()},'+ Add row')));
+  if(!D().regimen.length) card.append(el('p',{class:'muted'},'No medications yet. Tap "+ Add row".'));
+  D().regimen.forEach(row=>{ const m=D().meds.find(x=>x.id===row.medId)||{}; const stopped=row.status==='stopped'||row.freq==='stopped';
+    const rc=el('div',{style:`padding:11px 0;border-bottom:1px solid var(--line);opacity:${stopped?0.55:1}`});
+    // med select
+    const medSel=el('select',{onchange:e=>{ row.medId=D().meds[e.target.selectedIndex].id; Rx.logChange(row); Store.saveNow(); render(); }});
+    D().meds.forEach(mm=>{ const o=el('option',{},mm.name); if(mm.id===row.medId)o.selected=true; medSel.append(o); });
+    // dose
+    const doseIn=el('input',{type:'text',inputmode:'decimal',value:row.dose,placeholder:(m.unit||'mg'),style:'width:70px',
+      onchange:e=>{ const val=e.target.value.trim(); row.dose=val===''?'':(isNaN(+val)?val:+val); Rx.logChange(row); Store.save(); }});
+    // frequency
+    const freqSel=el('select',{onchange:e=>{ row.freq=FREQS[e.target.selectedIndex][0]; Rx.logChange(row); Store.saveNow(); render(); }});
+    FREQS.forEach(([val,lab])=>{ const o=el('option',{},lab); if(val===row.freq)o.selected=true; freqSel.append(o); });
+    // status
+    const statSel=el('select',{onchange:e=>{ row.status=e.target.value; Rx.logChange(row); Store.saveNow(); render(); }});
+    [['continuing','Continuing'],['stopped','Stopped']].forEach(([val,lab])=>{ const o=el('option',{value:val},lab); if(val===row.status)o.selected=true; statSel.append(o); });
+    rc.append(el('div',{class:'row',style:'gap:8px;margin-bottom:6px'}, el('div',{style:'flex:1'},medSel), doseIn, el('span',{class:'muted',style:'font-size:12px'},m.unit||'mg')));
+    rc.append(el('div',{class:'row',style:'gap:8px'},
+      el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb',style:'margin-bottom:3px'},'Frequency'),freqSel),
+      el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb',style:'margin-bottom:3px'},'Status'),statSel)));
+    rc.append(el('div',{class:'row',style:'gap:8px;margin-top:7px'},
+      el('button',{class:'btn sm ghost',onclick:()=>Rx.logDoseNow(row)},'＋ Log a dose now'),
+      el('div',{class:'spacer'}),
+      el('button',{class:'btn sm ghost',onclick:()=>Rx.remove(row)},'✕ Remove')));
+    card.append(rc); });
+  v.append(card);
+  // supplements quick access + settings for meds
+  v.append(el('div',{class:'row',style:'gap:8px'},
+    el('button',{class:'btn sm ghost',style:'flex:1',onclick:()=>QuickLog.open('med')},'Log a supplement / dose'),
+    el('button',{class:'btn sm ghost',style:'flex:1',onclick:()=>go('settings')},'Edit med list / PK')));
+  // today's actual logged doses
+  const today=dayKey(Date.now());
+  const doses=[...D().medLogs,...D().supplementLogs].filter(e=>dayKey(e.ts)===today).sort((a,b)=>a.ts-b.ts);
+  if(doses.length){ const dc=el('div',{class:'card'}); dc.append(el('h3',{style:'margin-top:0'},'Doses logged today'));
+    doses.forEach(e=>dc.append(el('div',{class:'row',style:'padding:5px 0'},
+      el('span',{style:'flex:1;font-size:13px'}, medName(e.medId)+' '+(e.dose===0?'(skipped)':((e.dose||'')+(typeof e.dose==='number'?(e.unit||'mg'):'')))),
+      el('span',{class:'muted',style:'font-size:11px'},fmtT(e.ts))))); v.append(dc); }
+};
+
+/* ==========================================================================
    HISTORY — calendar + list + detail + backfill
    ========================================================================== */
 let histState={view:'calendar', month:new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime()};
@@ -1918,7 +2026,7 @@ const Events={
 Views.settings=(v)=>{
   v.append(header('Settings',''));
   // meds
-  v.append(listEditor('Medications','meds',{doses:true,purpose:true,baseline:true,unit:true}));
+  v.append(listEditor('Medications','meds',{doses:true,purpose:true,baseline:true,unit:true,pk:true}));
   v.append(listEditor('Supplements','supplements',{doses:true,baseline:true,unit:true}));
   v.append(toggleEditor());
   v.append(strListEditor('Self-care activities','selfCareTypes'));
@@ -1948,6 +2056,8 @@ Views.settings=(v)=>{
     el('button',{class:'btn sm ghost',onclick:()=>Export.importJSON()},'⤒ Restore JSON'),
     el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Erase ALL data?','This cannot be undone. Back up first.',()=>{Store.reset();go('home');})},'Erase all')));
   v.append(dc);
+  // sources link (moved off the tab bar)
+  v.append(el('button',{class:'btn ghost block',style:'margin-bottom:14px',onclick:()=>go('sources')},'❋ Sources & evidence'));
   // dev
   const dev=el('div',{class:'card'}); dev.append(el('h3',{style:'margin-top:0'},'Developer'));
   dev.append(el('div',{class:'grid2'},
@@ -1974,9 +2084,46 @@ function listEditor(title, coll, opts){
     const opt=el('div',{class:'row',style:'margin-top:6px;gap:8px'});
     if(opts.purpose) opt.append(el('input',{type:'text',value:m.purpose||'',placeholder:'purpose',style:'flex:1',oninput:e=>{m.purpose=e.target.value;Store.save();}}));
     if(opts.baseline) opt.append(el('button',{class:'pill',style:`cursor:pointer;opacity:${m.baseline?1:.4}`,onclick:()=>{m.baseline=!m.baseline;Store.saveNow();render();}},m.baseline?'✓ baseline (hidden)':'baseline?'));
-    row.append(opt); c.append(row); });
+    row.append(opt);
+    // Cognitive-enhancer + pharmacokinetics (for the "meds on board" context)
+    if(opts.pk){
+      const pkRow=el('div',{style:'margin-top:8px'});
+      pkRow.append(el('button',{class:'pill',style:`cursor:pointer;opacity:${m.cogEnhancer?1:.4}`,onclick:()=>{m.cogEnhancer=!m.cogEnhancer; if(m.cogEnhancer&&!m.pk)m.pk={}; Store.saveNow();render();}},m.cogEnhancer?'✓ cognitive-enhancer (track PK)':'cognitive-enhancer?'));
+      if(m.cogEnhancer){
+        const unknown=!m.pk||m.pk.onset==null||m.pk.peak==null||m.pk.duration==null;
+        if(unknown) pkRow.append(el('div',{class:'banner',style:'margin:8px 0;padding:9px 11px'}, el('span',{class:'bic'},'⚠️'),
+          el('div',{class:'bt'}, el('b',{style:'font-size:12.5px'},'PK data missing'), el('span',{},'Set onset/peak/duration, or look it up from a reputable source.'))));
+        m.pk=m.pk||{};
+        const pkField=(lb,key)=>el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb',style:'margin-bottom:3px'},lb),
+          el('input',{type:'number',inputmode:'numeric',value:m.pk[key]!=null?m.pk[key]:'',placeholder:'min',oninput:e=>{m.pk[key]=e.target.value===''?null:+e.target.value;Store.save();}}));
+        pkRow.append(el('div',{class:'row',style:'gap:6px;margin-top:8px'}, pkField('Onset (min)','onset'), pkField('Peak (min)','peak'), pkField('Duration (min)','duration')));
+        pkRow.append(el('button',{class:'btn sm ghost',style:'margin-top:8px',onclick:()=>PKLookup.fetch(m)},'↻ Look up PK (openFDA)'));
+      }
+      row.append(pkRow);
+    }
+    c.append(row); });
   return c;
 }
+/* Fetch the FDA drug-label pharmacokinetics section for reference (reputable source).
+   Shows the label text so the user can set onset/peak/duration; does not silently overwrite. */
+const PKLookup = {
+  async fetch(m){ toast('Searching openFDA…');
+    try{
+      const q=encodeURIComponent('openfda.brand_name:"'+m.name+'"+openfda.generic_name:"'+m.name+'"');
+      const res=await fetch('https://api.fda.gov/drug/label.json?search='+q+'&limit=1');
+      const j=await res.json();
+      const r=j.results&&j.results[0];
+      const pk=(r&&(r.pharmacokinetics||r.clinical_pharmacology))||[];
+      const text=(Array.isArray(pk)?pk.join(' '):String(pk||'')).slice(0,1400)||'No pharmacokinetics section found in the FDA label.';
+      const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+      scrim.append(el('div',{class:'dlg',style:'max-height:80vh;overflow:auto'}, el('h3',{},m.name+' — FDA label PK'),
+        el('p',{class:'muted',style:'font-size:12px;line-height:1.5'},text),
+        el('p',{class:'muted',style:'font-size:11px'},'Use Tmax for "peak", and half-life × ~4 as a rough "duration". Enter values in the fields; nothing is auto-changed.'),
+        el('div',{class:'acts'}, el('button',{class:'btn primary',onclick:close},'Got it'))));
+      scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim);
+    }catch(e){ toast('Offline or no FDA match — enter PK manually'); }
+  },
+};
 function toggleEditor(){ const c=el('div',{class:'card'}); c.append(el('div',{class:'row'},el('h2',{},'Episode toggles'),el('div',{class:'spacer'}),
     el('button',{class:'btn sm',onclick:()=>{D().toggleTypes.push({id:uid(),label:'New state',color:'#22e3ff'});Store.saveNow();render();}},'+ Add')));
   D().toggleTypes.forEach(t=>c.append(el('div',{class:'row',style:'padding:7px 0;border-bottom:1px solid var(--line)'},
