@@ -153,6 +153,7 @@ input:focus,select:focus,textarea:focus{outline:none; border-color:var(--cyan); 
 .tag{font-size:10px; font-weight:700; padding:2px 7px; border-radius:6px; letter-spacing:.4px; text-transform:uppercase}
 .tag.daily{background:rgba(77,157,255,.16); color:var(--blue)}
 .tag.weekly{background:rgba(176,107,255,.16); color:var(--purple)}
+.tag.unwell{background:rgba(255,92,107,.16); color:var(--red)}
 hr.sep{border:none; border-top:1px solid var(--line); margin:14px 0}
 .kbd{font-family:ui-monospace,Menlo,monospace; font-size:11px; background:var(--bg2); padding:1px 6px; border-radius:5px; border:1px solid var(--line2); color:var(--ink2)}
 .fade{animation:fade .25s ease}
@@ -533,6 +534,7 @@ const Derive = {
 const Neuro = {
   // raw weighted burden z for one assessment, using rolling baseline of prior assessments
   rawBurden(a, history){
+    if(a.tooUnwell) return 3.2; // "too unwell to log" = a very high inflammatory/burden day
     let num=0, den=0;
     const W=CONFIG.neuroWeights;
     for(const key in W){
@@ -582,6 +584,7 @@ const Neuro = {
 const Score = {
   // burden 0..~ per assessment for a target, then invert to 0–100 better=up
   compute(a, history){
+    if(a.tooUnwell) return { qol:6, cog:6 }; // heavily weighted negative — a crash day
     const map=CONFIG.scoreMap;
     const acc={qol:{n:0,d:0}, cog:{n:0,d:0}};
     for(const key in map){
@@ -1110,7 +1113,9 @@ Views.home=(v)=>{
       el('button',{class:'btn',onclick:()=>Assess.start('weekly')},'🧪 Weekly full'),
       el('button',{class:'btn ghost',onclick:()=>MoodLog.openWake()},'🌅 Morning mood'),
       el('button',{class:'btn ghost',onclick:()=>QuickLog.open('med')},'💊 Quick med/supp'),
-      el('button',{class:'btn ghost',onclick:()=>QuickLog.open('vital')},'🩸 Glucose / BP'))));
+      el('button',{class:'btn ghost',onclick:()=>QuickLog.open('vital')},'🩸 Glucose / BP')),
+    el('button',{class:'btn block',style:'margin-top:10px;border-color:rgba(255,92,107,.5);color:#ffd7dc',
+      onclick:()=>logUnwell()}, '😞 Too unwell to log today')));
 
   // episode toggles
   v.append(el('div',{class:'card'},
@@ -1134,6 +1139,9 @@ function indexTile(name,val,color,note,big){
 }
 function hasDailyToday(){ const t=dayKey(Date.now()); return D().assessments.some(a=>dayKey(a.ts)===t); }
 function hasWakeMoodToday(){ const t=dayKey(Date.now()); return D().moodLogs.some(m=>m.type==='wake'&&dayKey(m.ts)===t); }
+function logUnwell(){ const ts=Date.now();
+  D().assessments.push({id:uid(),ts,cadence:'unwell',tooUnwell:true,sliders:{},exertion:{},sleep:{},meals:{},meds:[],supplements:[],glucose:[],selfCare:[],noteTags:[],notes:'Too unwell to input data'});
+  Store.saveNow(); toast('Logged as a crash day — rest up 🤍'); render(); }
 const MoodLog={ openWake(){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
   const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'Morning mood'));
   let val=5; dlg.append(makeSlider({key:'moodWake',label:'How do you feel on waking? (terrible → amazing)'},5,v=>val=v));
@@ -1255,6 +1263,8 @@ const Insights = {
         // post-stop (rebound/withdrawal) window: days since a streak ended + how long it ran
         const sw=stopWin[m.id]&&stopWin[m.id][k];
         if(sw){ v['med_'+m.id+'_afterStop']=sw.afterStop; v['med_'+m.id+'_streakLen']=sw.streakLen; } });
+      // "too unwell to log" crash day (heavily negative)
+      v.tooUnwell=list.some(a=>a.tooUnwell)?1:0;
       // self-care (binary per activity today)
       D().selfCareTypes.forEach(item=>{ const did=list.some(a=>(a.selfCare||[]).includes(item));
         v['sc_'+item]=did?1:0; });
@@ -1283,6 +1293,7 @@ const Insights = {
     V.glucoseStability={label:'Glucose stability % (day)',kind:'predictor'}; V.glucoseSpike={label:'Glucose spike (daily max)',kind:'predictor'};
     V.glucoseTrough={label:'Glucose trough (daily min)',kind:'predictor'}; V.glucoseRange={label:'Glucose swing (max−min)',kind:'predictor'};
     V.daysSinceIVIG={label:'Days since IVIG',kind:'predictor'};
+    V.tooUnwell={label:'Too unwell to log (crash day)',kind:'predictor'};
     V.moodWake={label:'Morning mood',kind:'predictor'}; V.moodEnd={label:'End-of-day mood',kind:'symptom'};
     V.moodDelta={label:'Mood shift (AM→PM)',kind:'predictor'};
     D().selfCareTypes.forEach(item=>{ V['sc_'+item]={label:item,kind:'predictor'}; });
@@ -1619,7 +1630,7 @@ function renderCalendar(v){
       onclick:()=>{ if(items.length===1) go('history','a:'+items[0].id); else if(items.length>1){ histState.view='list'; render(); } }},
       el('span',{style:'font-size:11px;color:var(--ink2)'},d),
       el('div',{class:'row',style:'gap:2px'},
-        ...items.slice(0,3).map(a=>el('span',{style:`width:5px;height:5px;border-radius:50%;background:${a.cadence==='weekly'?'var(--purple)':'var(--blue)'}`})),
+        ...items.slice(0,3).map(a=>el('span',{style:`width:5px;height:5px;border-radius:50%;background:${a.tooUnwell?'var(--red)':(a.cadence==='weekly'?'var(--purple)':'var(--blue)')}`})),
         ...(evs.length?[el('span',{style:'width:5px;height:5px;border-radius:50%;background:var(--red)'})]:[])));
     grid.append(cell); }
   card.append(grid);
@@ -1645,6 +1656,9 @@ function renderAssessmentDetail(v, id){
   v.append(el('div',{class:'hdr'}, el('div',{class:'row'},
     el('button',{class:'btn sm ghost',onclick:()=>go('history')},'‹ Back'),
     el('h1',{style:'font-size:17px;margin-left:6px'},fmtDT(a.ts)))));
+  if(a.tooUnwell){ v.append(el('div',{class:'card'}, el('div',{class:'row'},el('span',{class:'tag unwell'},'crash day'),el('div',{class:'spacer'}),
+      el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Delete this crash day?','',()=>{ D().assessments=D().assessments.filter(x=>x.id!==id); Store.saveNow(); go('history'); })},'Delete')),
+    el('p',{class:'muted',style:'margin-bottom:0'},'Marked "too unwell to input data." Counted as a heavily-weighted low day (QOL & cognition floored, neuroinflammation elevated).'))); return; }
   v.append(el('div',{class:'row',style:'margin-bottom:10px'}, el('span',{class:'tag '+a.cadence},a.cadence),
     el('div',{class:'spacer'}), a.durationMs?el('span',{class:'muted',style:'font-size:12px'},'took '+fmtElapsed(Math.round(a.durationMs/1000))):null,
     el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Delete this assessment?','',()=>{ D().assessments=D().assessments.filter(x=>x.id!==id); Store.saveNow(); go('history'); })},'Delete')));
