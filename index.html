@@ -244,9 +244,11 @@ const CONFIG = {
   glucoseSlots:['Wake','Noon','4pm','8pm','Bedtime'],
   // meds are in mg unless unit overridden. Logging: enter mg (0 = skipped), and a
   // change-type defaulting to "acute" (acute change/timing) vs "chronic" (daily-regimen change).
+  // cogEnhancer meds carry a simple pharmacokinetic curve (minutes): onset→peak→duration,
+  // so the app records how "on board" a stimulant is at test time (just-dosed ≠ peak effect).
   defaultMeds:[
-    {id:'caffeine',name:'Caffeine',unit:'mg',doses:[50,100,200],purpose:'Executive function',baseline:false},
-    {id:'concerta',name:'Concerta',unit:'mg',doses:[18,27,36,54],purpose:'Executive function',baseline:false},
+    {id:'caffeine',name:'Caffeine',unit:'mg',doses:[50,100,200],purpose:'Executive function',baseline:false,cogEnhancer:true,pk:{onset:20,peak:60,duration:300}},
+    {id:'concerta',name:'Concerta',unit:'mg',doses:[18,27,36,54],purpose:'Executive function',baseline:false,cogEnhancer:true,pk:{onset:60,peak:420,duration:720}},
     {id:'hydromorphone',name:'Hydromorphone',unit:'mg',doses:[1,2,4,8],purpose:'Pain',baseline:true,baselineDose:2},
     {id:'ivig',name:'IVIG',unit:'',doses:['Infusion'],purpose:'Immunomodulation',baseline:false},
   ],
@@ -362,6 +364,9 @@ const Store = (()=>{
   const base=fresh();
   for(const k in base){ if(data[k]==null) data[k]=base[k]; }
   if(data.settings) for(const k in base.settings){ if(data.settings[k]==null) data.settings[k]=base.settings[k]; }
+  // backfill cognitive-enhancer PK metadata onto existing known meds
+  (data.meds||[]).forEach(m=>{ const def=CONFIG.defaultMeds.find(x=>x.id===m.id);
+    if(def){ if(m.cogEnhancer==null) m.cogEnhancer=def.cogEnhancer||false; if(m.pk==null&&def.pk) m.pk=def.pk; } });
   let saveT;
   const save=()=>{ clearTimeout(saveT); saveT=setTimeout(()=>{
     try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch(e){ console.warn('save failed',e); }
@@ -492,6 +497,19 @@ function header(title,sub){
 }
 
 /* ==========================================================================
+   Med PK — transparent piecewise curve for "how on board is this stimulant?"
+   ========================================================================== */
+const Med = {
+  pkEffect(pk, mins){ if(!pk||mins==null||mins<0) return {level:0,phase:'—'};
+    const onset=pk.onset||30, peak=pk.peak||120, duration=pk.duration||360;
+    if(mins<onset) return {level:(mins/onset)*0.1, phase:'not yet active'};      // absorbing
+    if(mins<peak){ const f=(mins-onset)/Math.max(1,(peak-onset)); return {level:0.1+0.9*f, phase:f<0.6?'rising':'near peak'}; }
+    if(mins<duration){ const f=(mins-peak)/Math.max(1,(duration-peak)); return {level:1-0.9*f, phase:f<0.5?'peak / plateau':'declining'}; }
+    return {level:0, phase:'worn off'};
+  },
+};
+
+/* ==========================================================================
    DERIVED — episodes, days-since-IVIG, per-day feature vectors
    ========================================================================== */
 const Derive = {
@@ -508,6 +526,18 @@ const Derive = {
     D().episodes.forEach(e=>{ if(e.kind===kind&&e.endTs!=null&&e.endTs<=ts){ const d=Math.floor((ts-e.endTs)/DAY); if(best==null||d<best)best=d; }});
     return best; },
   openEpisode(kind){ return D().episodes.find(e=>e.kind===kind&&e.endTs==null); },
+  // Cognitive-enhancer meds "on board" at a given time: which stimulant doses precede
+  // `ts` within their duration, and how far into the PK curve (just-dosed ≠ peak).
+  cogMedContext(ts){ const out=[];
+    D().meds.filter(m=>m.cogEnhancer).forEach(m=>{ let last=null;
+      const scan=e=>{ if(e.medId===m.id && e.ts<=ts && e.dose!==0 && e.deviation!=='missed'){ if(!last||e.ts>last.ts) last=e; } };
+      D().medLogs.forEach(scan); D().assessments.forEach(a=>(a.meds||[]).forEach(scan));
+      if(!last) return; const mins=Math.round((ts-last.ts)/60000);
+      const pk=m.pk||{onset:30,peak:120,duration:360}; if(mins>pk.duration) return;
+      const {level,phase}=Med.pkEffect(pk,mins);
+      out.push({medId:m.id,name:m.name,dose:last.dose,unit:m.unit||'',minsSince:mins,effect:Math.round(level*100),phase}); });
+    return out;
+  },
   // Med streak / stop analysis: a med taken N days in a row then stopped.
   // Returns { dayKey -> {afterStop:1..14, streakLen} } for the 2-week post-stop window,
   // so the correlation engine can trace rebound/withdrawal effects. Dosage carried too.
@@ -641,7 +671,8 @@ const Assess = {
     this.active={ cadence, variant:variant||null, startTs:Date.now(), forTs:now, step:0,
       draft:{ id:uid(), ts:now, cadence, variant:variant||null, sliders:{}, exertion:{}, sleep:{}, meals:{},
         meds:[], supplements:[], glucose:[], bp:null, objective:cadence==='weekly'?{}:null,
-        questionnaires:cadence==='weekly'?{}:null, notes:'' },
+        questionnaires:cadence==='weekly'?{}:null,
+        medContext:cadence==='weekly'?Derive.cogMedContext(Date.now()):null, notes:'' },
       steps:this.buildSteps(cadence, variant) };
     this.render();
   },
@@ -653,6 +684,7 @@ const Assess = {
       M.push({t:'vitals', title:'Wake vitals', wakeOnly:true});
       for(let i=0;i<AM_SLIDERS.length;i+=6) M.push({t:'sliders', title:'Waking state ('+(Math.floor(i/6)+1)+')', keys:AM_SLIDERS.slice(i,i+6)});
       M.push({t:'moodwake', title:'Morning mood'});
+      M.push({t:'medcontext', title:'Medications on board'});
       M.push({t:'cog', test:'stroop', title:'Stroop — name the ink color'});
       M.push({t:'cog', test:'symbol', title:'Symbol–Digit — processing speed'});
       M.push({t:'cog', test:'span', title:'Digit Span — working memory'});
@@ -678,6 +710,7 @@ const Assess = {
     const sl=CONFIG.sliders;
     for(let i=0;i<sl.length;i+=6) S.push({t:'sliders', title:'How are you? ('+(Math.floor(i/6)+1)+')', from:i, to:Math.min(i+6,sl.length)});
     if(cadence==='weekly'){
+      S.push({t:'medcontext', title:'Medications on board'});
       S.push({t:'cog', test:'stroop', title:'Stroop — name the ink color'});
       S.push({t:'cog', test:'symbol', title:'Symbol–Digit — processing speed'});
       S.push({t:'cog', test:'span', title:'Digit Span — working memory'});
@@ -868,6 +901,25 @@ const Assess = {
   step_moodwake(b){ const d=this.active.draft;
     b.append(el('p',{class:'muted',style:'margin-top:0'},'How you feel on waking — your clean starting point for the day.'));
     b.append(makeSlider({key:'moodWake',label:'Mood on waking (terrible → amazing)'}, d.sliders.moodWake, v=>d.sliders.moodWake=v));
+    b.append(this.footer());
+  },
+  step_medcontext(b){ const d=this.active.draft;
+    // recompute now, in case a dose was quick-logged just before starting
+    d.medContext=Derive.cogMedContext(Date.now());
+    const ctx=d.medContext||[];
+    if(!ctx.length){
+      b.append(el('div',{class:'banner'}, el('span',{class:'bic'},'✅'),
+        el('div',{class:'bt'}, el('b',{},'No cognitive-enhancing meds on board'), el('span',{},'This is a clean cognitive baseline.'))));
+    } else {
+      b.append(el('p',{class:'muted',style:'margin-top:0'},'Taken before this test. Your scores are read WITH this in mind — a dose that hasn\'t peaked won\'t show its full effect, and a boosted score isn\'t treated as your true baseline. The effect level below is tracked as a variable, so trends separate medication from real change.'));
+      ctx.forEach(c=>b.append(el('div',{class:'card',style:'padding:13px'},
+        el('div',{class:'row'}, el('b',{},c.name+' '+(c.dose||'')+(typeof c.dose==='number'?(c.unit||'mg'):'')),
+          el('div',{class:'spacer'}), el('span',{style:'font-weight:800;color:var(--cyan)'},c.effect+'%')),
+        el('div',{class:'muted',style:'font-size:12px'}, c.minsSince+' min ago · '+c.phase),
+        el('div',{style:'height:6px;border-radius:6px;background:var(--line);margin-top:7px'},
+          el('div',{style:`height:100%;width:${c.effect}%;border-radius:6px;background:linear-gradient(90deg,var(--cyan),var(--green))`})))));
+      b.append(el('p',{class:'muted',style:'font-size:11px'},'If you haven\'t dosed yet and want a clean baseline, go back and take the test before your meds.'));
+    }
     b.append(this.footer());
   },
   step_mood(b){ const d=this.active.draft;
@@ -1190,13 +1242,13 @@ function hasFullToday(variant){ const t=dayKey(Date.now()); return D().assessmen
 function logUnwell(){ const ts=Date.now();
   D().assessments.push({id:uid(),ts,cadence:'unwell',tooUnwell:true,sliders:{},exertion:{},sleep:{},meals:{},meds:[],supplements:[],glucose:[],selfCare:[],noteTags:[],notes:'Too unwell to input data'});
   Store.saveNow(); toast('Logged as a crash day — rest up 🤍'); render(); }
-const MoodLog={ openWake(){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
-  const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'Morning mood'));
+const MoodLog={ openWake(forTs){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+  const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'Morning mood'+(forTs?' · '+fmtD(forTs):'')));
   let val=5; dlg.append(makeSlider({key:'moodWake',label:'How do you feel on waking? (terrible → amazing)'},5,v=>val=v));
   const gv=el('input',{type:'number',inputmode:'numeric',placeholder:'wake glucose (optional)'});
   dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Wake glucose'),gv));
   dlg.append(el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Cancel'),
-    el('button',{class:'btn primary',onclick:()=>{ const ts=Date.now();
+    el('button',{class:'btn primary',onclick:()=>{ const ts=forTs||Date.now();
       D().moodLogs.push({type:'wake',ts,value:val});
       if(gv.value) D().vitals.push({type:'glucose',ts,value:+gv.value,slot:'Wake'});
       Store.saveNow(); close(); toast('Morning mood logged 🌅'); render(); }},'Save')));
@@ -1206,11 +1258,12 @@ function isWeeklyDue(){ const last=[...D().assessments].reverse().find(a=>a.cade
 
 /* Quick log (meds/vitals outside an assessment) */
 const QuickLog = {
-  open(kind){
+  open(kind, forTs){
     const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
     const dlg=el('div',{class:'dlg'});
+    const stamp=()=>{ if(!forTs)return Date.now(); const now=new Date(); const d=new Date(forTs); d.setHours(now.getHours(),now.getMinutes(),0,0); return d.getTime(); };
     if(kind==='med'){
-      dlg.append(el('h3',{},'Quick log'));
+      dlg.append(el('h3',{},'Quick log'+(forTs?' · '+fmtD(forTs):'')));
       const all=[...D().meds.map(m=>({...m,coll:'medLogs'})),...D().supplements.map(m=>({...m,coll:'supplementLogs'}))];
       let sel=all[0];
       const doseWrap=el('div',{});
@@ -1236,10 +1289,10 @@ const QuickLog = {
           let dose, dev='added';
           if(mgEl){ dose=mgEl.value===''?(sel.baselineDose||0):+mgEl.value; dev=dose===0?'missed':'changed'; }
           else dose=($('#qldose')||{}).value;
-          D()[c].push({medId:sel.id,dose,unit:sel.unit==null?'mg':sel.unit,changeType:ctSel.selectedIndex===1?'chronic':'acute',ts:Date.now(),purpose:sel.purpose||null,deviation:dev});
-          Store.saveNow(); close(); toast(sel.name+(dose===0?' skipped':' logged')+' · '+fmtT(Date.now())); }},'Log now')));
+          const ts=stamp(); D()[c].push({medId:sel.id,dose,unit:sel.unit==null?'mg':sel.unit,changeType:ctSel.selectedIndex===1?'chronic':'acute',ts,purpose:sel.purpose||null,deviation:dev});
+          Store.saveNow(); close(); toast(sel.name+(dose===0?' skipped':' logged')+' · '+fmtT(ts)); render(); }},'Log now')));
     } else {
-      dlg.append(el('h3',{},'Glucose / BP'));
+      dlg.append(el('h3',{},'Glucose / BP'+(forTs?' · '+fmtD(forTs):'')));
       const gv=el('input',{type:'number',inputmode:'numeric',placeholder:'Glucose mg/dL'});
       const slot=el('select',{}); CONFIG.glucoseSlots.forEach(s=>slot.append(el('option',{},s)));
       const sys=el('input',{type:'number',placeholder:'Sys'}),dia=el('input',{type:'number',placeholder:'Dia'}),pu=el('input',{type:'number',placeholder:'Pulse'});
@@ -1247,10 +1300,10 @@ const QuickLog = {
       dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Blood pressure'),el('div',{class:'row',style:'gap:8px'},sys,dia,pu)));
       dlg.append(el('div',{class:'acts'},
         el('button',{class:'btn ghost',onclick:close},'Cancel'),
-        el('button',{class:'btn primary',onclick:()=>{ const ts=Date.now();
+        el('button',{class:'btn primary',onclick:()=>{ const ts=stamp();
           if(gv.value) D().vitals.push({type:'glucose',ts,value:+gv.value,slot:slot.value});
           if(sys.value||dia.value) D().vitals.push({type:'bp',ts,sys:+sys.value||null,dia:+dia.value||null,pulse:+pu.value||null});
-          Store.saveNow(); close(); toast('Vitals logged ✓'); }},'Log now')));
+          Store.saveNow(); close(); toast('Vitals logged ✓'); render(); }},'Log now')));
     }
     scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();});
     document.body.append(scrim);
@@ -1325,7 +1378,9 @@ const Insights = {
         const since=Derive.daysSinceEnded(t.id,ts); if(since!=null&&since<=10)v['ep_'+t.id+'_after']=since; });
       // weekly objective + indices
       const wk=list.find(a=>a.cadence==='weekly'&&a.objective);
-      if(wk){ ['obj_processingSpeed','obj_rtVariability','obj_workingMemory','obj_attention','obj_recall'].forEach(kk=>{ if(wk.objective[kk]!=null)v[kk]=wk.objective[kk]; }); }
+      if(wk){ ['obj_processingSpeed','obj_rtVariability','obj_workingMemory','obj_attention','obj_recall'].forEach(kk=>{ if(wk.objective[kk]!=null)v[kk]=wk.objective[kk]; });
+        // stimulant effect level on board at the cognitive test (PK-aware)
+        D().meds.filter(m=>m.cogEnhancer).forEach(m=>{ const c=(wk.medContext||[]).find(x=>x.medId===m.id); v['cogmed_'+m.id+'_effect']=c?c.effect:0; }); }
       return v;
     });
   },
@@ -1353,6 +1408,7 @@ const Insights = {
       V['med_'+m.id+'_streakLen']={label:m.name+' prior streak length',kind:'predictor'}; });
     D().toggleTypes.forEach(t=>{ V['ep_'+t.id+'_active']={label:t.label+' (active)',kind:'predictor'};
       V['ep_'+t.id+'_after']={label:'Days since '+t.label+' ended',kind:'predictor'}; });
+    D().meds.filter(m=>m.cogEnhancer).forEach(m=>{ V['cogmed_'+m.id+'_effect']={label:m.name+' effect level at test',kind:'predictor'}; });
     V.obj_processingSpeed={label:'Processing speed (obj)',kind:'objective'}; V.obj_rtVariability={label:'RT variability (obj)',kind:'objective'};
     V.obj_workingMemory={label:'Working memory (obj)',kind:'objective'}; V.obj_attention={label:'Attention (obj)',kind:'objective'};
     return V;
@@ -1652,6 +1708,7 @@ const Lit={
 let histState={view:'calendar', month:new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime()};
 Views.history=(v)=>{
   if(State.sub&&State.sub.startsWith('a:')){ return renderAssessmentDetail(v, State.sub.slice(2)); }
+  if(State.sub&&State.sub.startsWith('day:')){ return renderDayView(v, State.sub.slice(4)); }
   v.append(header('History',''));
   v.append(el('div',{class:'row',style:'margin-bottom:12px'},
     seg(['Calendar','List'], histState.view==='calendar'?'Calendar':'List', x=>{histState.view=x.toLowerCase();render();}),
@@ -1672,11 +1729,14 @@ function renderCalendar(v){
   const grid=el('div',{style:'display:grid;grid-template-columns:repeat(7,1fr);gap:4px'});
   ['S','M','T','W','T','F','S'].forEach(d=>grid.append(el('div',{class:'muted',style:'text-align:center;font-size:10px;padding:2px'},d)));
   for(let i=0;i<start;i++) grid.append(el('div',{}));
+  const todayKey=dayKey(Date.now());
   for(let d=1;d<=days;d++){ const key=y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-    const items=byDay[key]||[]; const evs=evByDay[key]||[];
-    const cell=el('button',{style:`aspect-ratio:1;border-radius:9px;border:1px solid ${items.length?'var(--line2)':'var(--line)'};background:${items.length?'var(--panel2)':'transparent'};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px`,
-      onclick:()=>{ if(items.length===1) go('history','a:'+items[0].id); else if(items.length>1){ histState.view='list'; render(); } }},
-      el('span',{style:'font-size:11px;color:var(--ink2)'},d),
+    const items=byDay[key]||[]; const evs=evByDay[key]||[]; const isToday=key===todayKey;
+    const cell=el('button',{style:`position:relative;aspect-ratio:1;border-radius:9px;border:1px solid ${isToday?'var(--amber)':(items.length?'var(--line2)':'var(--line)')};background:${items.length?'var(--panel2)':'transparent'};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px`,
+      onclick:()=>go('history','day:'+key)},
+      // gold diamond in the corner of today's square
+      isToday?el('span',{style:'position:absolute;top:3px;right:3px;width:7px;height:7px;background:var(--amber);box-shadow:0 0 6px var(--amber);transform:rotate(45deg)'}):null,
+      el('span',{style:`font-size:11px;color:${isToday?'var(--amber)':'var(--ink2)'};font-weight:${isToday?'800':'400'}`},d),
       el('div',{class:'row',style:'gap:2px'},
         ...items.slice(0,3).map(a=>el('span',{style:`width:5px;height:5px;border-radius:50%;background:${a.tooUnwell?'var(--red)':(a.cadence==='weekly'?'var(--purple)':'var(--blue)')}`})),
         ...(evs.length?[el('span',{style:'width:5px;height:5px;border-radius:50%;background:var(--red)'})]:[])));
@@ -1687,6 +1747,56 @@ function renderCalendar(v){
   v.append(card);
 }
 function legendDot(c,l){ return el('span',{class:'row',style:'gap:5px'},el('span',{style:`width:8px;height:8px;border-radius:50%;background:${c}`}),el('span',{class:'muted',style:'font-size:11px'},l)); }
+function renderDayView(v, dayk){
+  const [y,mo,d]=dayk.split('-').map(Number);
+  const dayTs=new Date(y,mo-1,d,12,0,0).getTime();
+  const isToday=dayk===dayKey(Date.now());
+  const on=dayk; const F=x=>dayKey(x)===on;
+  v.append(el('div',{class:'hdr'}, el('div',{class:'row'},
+    el('button',{class:'btn sm ghost',onclick:()=>go('history')},'‹ Back'),
+    el('h1',{style:'font-size:17px;margin-left:6px'}, new Date(dayTs).toLocaleDateString([],{weekday:'short',month:'short',day:'numeric',year:'numeric'}) + (isToday?' · Today':'')))));
+  // add / backfill actions
+  v.append(el('div',{class:'card'},
+    el('h3',{style:'margin-top:0'},'Add data for this day'),
+    el('div',{class:'grid2'},
+      el('button',{class:'btn sm',onclick:()=>Assess.start('daily',dayTs)},'📝 Full check-in'),
+      el('button',{class:'btn sm ghost',onclick:()=>MoodLog.openWake(dayTs)},'🌅 Mood'),
+      el('button',{class:'btn sm ghost',onclick:()=>QuickLog.open('med',dayTs)},'💊 Med / supp'),
+      el('button',{class:'btn sm ghost',onclick:()=>QuickLog.open('vital',dayTs)},'🩸 Glucose / BP')),
+    el('p',{class:'muted',style:'font-size:11px;margin-bottom:0'},'Backfilling past days closes gaps and improves correlation confidence.')));
+  // assessments
+  const asmts=D().assessments.filter(a=>F(a.ts)).sort((a,b)=>a.ts-b.ts);
+  if(asmts.length){ const c=el('div',{class:'card'}); c.append(el('h3',{style:'margin-top:0'},'Assessments'));
+    asmts.forEach(a=>c.append(el('button',{class:'row',style:'width:100%;text-align:left;padding:9px 0;border-bottom:1px solid var(--line);background:none',onclick:()=>go('history','a:'+a.id)},
+      el('span',{class:'tag '+a.cadence},a.cadence+(a.variant?' '+a.variant.toUpperCase():'')), el('div',{class:'spacer'}),
+      el('span',{class:'muted',style:'font-size:12px'},fmtT(a.ts)+' ›')))); v.append(c); }
+  // meds + supplements (standalone logs + in-assessment)
+  const meds=[]; D().medLogs.filter(e=>F(e.ts)).forEach(e=>meds.push({...e,coll:'medLogs',name:medName(e.medId)}));
+  D().supplementLogs.filter(e=>F(e.ts)).forEach(e=>meds.push({...e,coll:'supplementLogs',name:medName(e.medId)}));
+  asmts.forEach(a=>(a.meds||[]).forEach(e=>meds.push({...e,name:medName(e.medId),inAsmt:true})));
+  if(meds.length){ const c=el('div',{class:'card'}); c.append(el('h3',{style:'margin-top:0'},'Meds & supplements'));
+    meds.sort((a,b)=>a.ts-b.ts).forEach(e=>c.append(el('div',{class:'row',style:'padding:6px 0;border-bottom:1px solid var(--line)'},
+      el('span',{style:'flex:1;font-size:13px'}, e.name+' '+(e.dose===0?'(skipped)':((e.dose||'')+(typeof e.dose==='number'?(e.unit||'mg'):'')))+' · '+fmtT(e.ts)+(e.changeType==='chronic'?' · chronic':'')),
+      e.inAsmt?el('span',{class:'muted',style:'font-size:10px'},'in check-in'):el('button',{class:'btn sm ghost',onclick:()=>{D()[e.coll]=D()[e.coll].filter(x=>x!==e&&!(x.medId===e.medId&&x.ts===e.ts));Store.saveNow();render();}},'✕')))); v.append(c); }
+  // vitals
+  const vit=D().vitals.filter(x=>F(x.ts)); asmts.forEach(a=>(a.glucose||[]).forEach(g=>vit.push({type:'glucose',...g})));
+  if(vit.length){ const c=el('div',{class:'card'}); c.append(el('h3',{style:'margin-top:0'},'Vitals'));
+    vit.sort((a,b)=>a.ts-b.ts).forEach(x=>c.append(el('div',{class:'row',style:'padding:5px 0'},
+      el('span',{style:'flex:1;font-size:13px'}, x.type==='glucose'?('Glucose '+x.value+' mg/dL'+(x.slot?' ('+x.slot+')':'')):('BP '+x.sys+'/'+x.dia+(x.pulse?' · '+x.pulse+'bpm':''))),
+      el('span',{class:'muted',style:'font-size:11px'},fmtT(x.ts))))); v.append(c); }
+  // mood logs
+  const moods=D().moodLogs.filter(m=>F(m.ts));
+  if(moods.length){ const c=el('div',{class:'card'}); c.append(el('h3',{style:'margin-top:0'},'Mood'));
+    moods.forEach(m=>c.append(el('div',{class:'row',style:'padding:5px 0'}, el('span',{style:'flex:1;font-size:13px'},(m.type==='wake'?'Morning mood':'Mood')+': '+m.value+'/10'), el('span',{class:'muted',style:'font-size:11px'},fmtT(m.ts))))); v.append(c); }
+  // episodes touching this day
+  const eps=D().episodes.filter(e=>dayKey(e.startTs)===on||(e.endTs&&dayKey(e.endTs)===on)||(e.startTs<=dayTs&&(e.endTs==null||e.endTs>=dayTs)));
+  if(eps.length){ const c=el('div',{class:'card'}); c.append(el('h3',{style:'margin-top:0'},'Episodes'));
+    eps.forEach(e=>{ const t=D().toggleTypes.find(x=>x.id===e.kind); c.append(el('div',{class:'row',style:'padding:5px 0'},
+      el('span',{style:`width:9px;height:9px;border-radius:50%;background:${t?t.color:'var(--ink3)'}`}), el('span',{style:'flex:1;font-size:13px'},t?t.label:e.kind),
+      el('button',{class:'btn sm ghost',onclick:()=>Events.editEpisode(e)},'edit'))); }); v.append(c); }
+  if(!asmts.length&&!meds.length&&!vit.length&&!moods.length) v.append(el('div',{class:'empty'},'Nothing logged this day yet. Use the buttons above to add data.'));
+}
+function medName(id){ const m=[...D().meds,...D().supplements].find(x=>x.id===id); return m?m.name:id; }
 function renderList(v){
   const A=[...D().assessments].sort((a,b)=>b.ts-a.ts);
   if(!A.length){ v.append(el('div',{class:'empty'},'No assessments yet.')); return; }
@@ -1719,7 +1829,13 @@ function renderAssessmentDetail(v, id){
   v.append(sc);
   if(a.sleep&&a.sleep.totalSleepMin) v.append(el('div',{class:'card'},el('h3',{style:'margin-top:0'},'Sleep'),
     el('p',{class:'muted'},(a.sleep.totalSleepMin/60).toFixed(1)+'h sleep'+(a.sleep.efficiency?' · '+a.sleep.efficiency+'% efficiency':''))));
-  if(a.objective) v.append(objCard(a.objective));
+  if(a.objective){ v.append(objCard(a.objective));
+    if(a.medContext&&a.medContext.length){ const mc=el('div',{class:'card'}); mc.append(el('h3',{style:'margin-top:0'},'Meds on board at test'));
+      a.medContext.forEach(c=>mc.append(el('div',{class:'row',style:'padding:3px 0'},
+        el('span',{style:'flex:1;font-size:13px'}, c.name+' — '+c.minsSince+'m ago · '+c.phase), el('b',{style:'color:var(--cyan)'},c.effect+'%'))));
+      mc.append(el('p',{class:'muted',style:'font-size:11px;margin-bottom:0'},'Cognitive scores here were affected by these; the effect level is tracked separately in Insights.'));
+      v.append(mc); }
+    else if(a.cadence==='weekly') v.append(el('p',{class:'muted',style:'text-align:center;font-size:12px'},'✅ Clean cognitive baseline — no stimulants on board.')); }
   if(a.questionnaires&&Object.keys(a.questionnaires).some(k=>!k.startsWith('_'))) v.append(quizCard(a.questionnaires));
   if(a.notes) v.append(el('div',{class:'card'},el('h3',{style:'margin-top:0'},'Notes'),el('p',{class:'muted'},a.notes)));
 }
@@ -1734,13 +1850,18 @@ function quizCard(q){ const c=el('div',{class:'card'}); c.append(el('h3',{style:
   if(q.bfi10) c.append(el('p',{class:'muted'},'BFI-10 — E'+q.bfi10.extra.toFixed(1)+' A'+q.bfi10.agree.toFixed(1)+' C'+q.bfi10.consc.toFixed(1)+' N'+q.bfi10.neuro.toFixed(1)+' O'+q.bfi10.open.toFixed(1)));
   return c; }
 const Backfill={ open(){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
-  const dt=el('input',{type:'date',max:dayKey(Date.now())});
+  const dt=el('input',{type:'date',max:dayKey(Date.now()),value:dayKey(Date.now()-DAY)}); // prefilled = yesterday
+  const startFor=ts=>{ close(); Assess.start('daily',ts); };
+  const chips=el('div',{class:'row wrap',style:'gap:6px;margin-bottom:10px'});
+  [['Yesterday',1],['2 days ago',2],['3 days ago',3]].forEach(([lab,n])=>
+    chips.append(el('button',{class:'pill',style:'cursor:pointer',onclick:()=>startFor(new Date(new Date().setHours(20,0,0,0)-n*DAY).valueOf())},lab)));
   scrim.append(el('div',{class:'dlg'}, el('h3',{},'Backfill a past day'),
-    el('p',{class:'muted'},'Fill in a full day you missed. Confidence recovers as gaps close.'),
-    el('label',{class:'fld'},el('div',{class:'lb'},'Date'),dt),
+    el('p',{class:'muted'},'Fill in a full day you missed. Confidence recovers as gaps close. Tip: you can also tap any date on the calendar.'),
+    chips,
+    el('label',{class:'fld'},el('div',{class:'lb'},'Or pick a date'),dt),
     el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Cancel'),
       el('button',{class:'btn primary',onclick:()=>{ if(!dt.value)return; const [y,mo,d]=dt.value.split('-').map(Number);
-        const ts=new Date(y,mo-1,d,20,0,0).getTime(); close(); Assess.start('daily',ts); }},'Start'))));
+        startFor(new Date(y,mo-1,d,20,0,0).getTime()); }},'Start'))));
   scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim); } };
 
 /* ==========================================================================
