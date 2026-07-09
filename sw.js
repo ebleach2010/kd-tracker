@@ -2,7 +2,7 @@
    HTML/navigations use NETWORK-FIRST so app updates always appear when online
    (falling back to cache offline). Other assets are cache-first. Bump CACHE on
    any change to this file to retire old caches. */
-const CACHE = 'neurotrack-v9';
+const CACHE = 'neurotrack-v10';
 const ASSETS = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

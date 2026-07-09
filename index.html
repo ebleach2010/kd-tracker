@@ -388,6 +388,9 @@ const Store = (()=>{
   // add any new default self-care items (e.g. "Self care") for existing users
   data.selfCareTypes=data.selfCareTypes||[];
   CONFIG.defaultSelfCare.forEach(sc=>{ if(!data.selfCareTypes.includes(sc)) data.selfCareTypes.push(sc); });
+  // migrate old regimen rows: acute/stopped used to live on `freq`; they're now `status`.
+  (data.regimen||[]).forEach(r=>{ if(r.freq==='acute'){ r.status='acute'; r.freq='1x'; }
+    if(r.freq==='stopped'){ r.status='stopped'; r.freq='1x'; } if(!r.status) r.status='acute'; });
   let saveT;
   const save=()=>{ clearTimeout(saveT); saveT=setTimeout(()=>{
     try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch(e){ console.warn('save failed',e); }
@@ -492,8 +495,9 @@ const TABS=[
   {id:'settings', label:'Settings', ic:'⚙'},
 ];
 // medication frequency options for the regimen table
-const FREQS=[['q1h','Q1hr'],['q2h','Q2hr'],['q3h','Q3hr'],['q4h','Q4hr'],['q5h','Q5hr'],['q6h','Q6hr'],['q7h','Q7hr'],['q8h','Q8hr'],['1x','1×/day'],['2x','2×/day'],['stopped','Stopped'],['acute','Acute (fluctuates)']];
-const FREQ_ORD={q1h:1,q2h:2,q3h:3,q4h:4,q5h:5,q6h:6,q7h:7,q8h:8,'1x':9,'2x':10,stopped:0,acute:11};
+// Frequency = the interval / time-of-day for a CONTINUING med (acute/stopped moved to status).
+const FREQS=[['q1h','Q1hr'],['q2h','Q2hr'],['q3h','Q3hr'],['q4h','Q4hr'],['q5h','Q5hr'],['q6h','Q6hr'],['q7h','Q7hr'],['q8h','Q8hr'],['1x','1×/day'],['2x','2×/day']];
+const FREQ_ORD={q1h:1,q2h:2,q3h:3,q4h:4,q5h:5,q6h:6,q7h:7,q8h:8,'1x':9,'2x':10};
 function go(tab,sub){ State.tab=tab; State.sub=sub||null; render(); window.scrollTo(0,0); }
 function render(){
   const v=$('#view'); v.innerHTML='';
@@ -1384,13 +1388,15 @@ Views.home=(v)=>{
     el('p',{class:'muted',style:'margin:4px 0 10px'},'Flip the switch on/off. Tap the right side to adjust the marked time or date.'),
     ...D().toggleTypes.map(t=>{ const open=Derive.openEpisode(t.id);
       const lastClosed=[...D().episodes].filter(e=>e.kind===t.id&&e.endTs).sort((a,b)=>b.endTs-a.endTs)[0];
-      const editable=open||lastClosed;
       return el('div',{class:'tgl'+(open?' on':'')},
         el('div',{class:'sw',style:'cursor:pointer',onclick:()=>{ Toggles.flip(t.id); render(); }}),
-        el('div',{class:'tinfo',style:editable?'cursor:pointer':'',onclick:()=>{ const ep=open||lastClosed; if(!ep)return;
-            episodeTimesEditor('"'+t.label+'" times', ep, (s,e)=>{ ep.startTs=s; ep.endTs=e; Store.saveNow(); render(); }); }},
+        // right side is ALWAYS tappable: edit an existing episode's times, OR (when off & unused)
+        // start the toggle at a specific back-dated time. Works for built-in AND custom toggles.
+        el('div',{class:'tinfo',style:'cursor:pointer',onclick:()=>{ const ep=open||lastClosed;
+            if(ep){ episodeTimesEditor('"'+t.label+'" times', ep, (s,e)=>{ ep.startTs=s; ep.endTs=e; Store.saveNow(); render(); }); }
+            else { timeDateEditor('Start "'+t.label+'" at', Date.now(), ts=>{ D().episodes.push({id:uid(),kind:t.id,startTs:ts,endTs:null}); Store.saveNow(); render(); }); } }},
           el('b',{},t.label),
-          el('span',{}, open?('On since '+fmtDT(open.startTs)+'  ›') : ('Off'+(lastClosed?(' · ended '+fmtDT(lastClosed.endTs)+'  ›'):''))))); })));
+          el('span',{}, open?('On since '+fmtDT(open.startTs)+'  ›') : ('Off'+(lastClosed?(' · ended '+fmtDT(lastClosed.endTs)+'  ›'):' · set start ›'))))); })));
 
   v.append(el('p',{class:'muted',style:'text-align:center'},
     D().assessments.length+' assessments logged · '+
@@ -1713,7 +1719,8 @@ const Insights = {
       noteTags.forEach(t=>{ v['note_'+t]=dayNotes.has(t)?1:0; });
       // regimen state in effect on this day (from the Meds tab change-log)
       regimenMeds.forEach(mid=>{ const st=rxStateOn(mid, ts); if(!st)return;
-        v['rx_'+mid+'_active']=(st.status==='stopped'||st.freq==='stopped')?0:1;
+        // only a CONTINUING med "carries over" as active each day; acute = per-dose (from medLogs), stopped = ceased
+        v['rx_'+mid+'_active']=(st.status==='continuing')?1:0;
         v['rx_'+mid+'_freqN']=FREQ_ORD[st.freq]!=null?FREQ_ORD[st.freq]:0;
         if(typeof st.dose==='number')v['rx_'+mid+'_dose']=st.dose; });
       // derived episode/IVIG (incl. PK-informed effect-on-board: acute + sustained)
@@ -2206,10 +2213,12 @@ const Lit={
    "Continuing" rows persist and apply every day until changed; "acute" fluctuates;
    "stopped" is discontinued. Actual dose events log to medLogs (for PK + streaks).
    ========================================================================== */
-function rxStateOn(medId, ts){ let best=null; const cut=ts+DAY; D().regimenLog.forEach(r=>{ if(r.medId===medId && r.ts<=cut){ if(!best||r.ts>best.ts) best=r; } }); return best; }
+// most-recent regimen state for a med as of day `ts`; on equal timestamps the LATER-logged
+// entry wins (>=) so several same-moment changes resolve to the final one.
+function rxStateOn(medId, ts){ let best=null; const cut=ts+DAY; D().regimenLog.forEach(r=>{ if(r.medId===medId && r.ts<=cut){ if(!best||r.ts>=best.ts) best=r; } }); return best; }
 const Rx = {
   logChange(row){ D().regimenLog.push({ts:Date.now(), medId:row.medId, dose:row.dose, freq:row.freq, status:row.status}); },
-  addRow(){ const m=D().meds[0]||{id:'',doses:[]}; const row={id:uid(), medId:m.id, dose:(m.baselineDose!=null?m.baselineDose:(m.doses&&m.doses[0])||''), freq:'1x', status:'continuing'};
+  addRow(){ const m=D().meds[0]||{id:'',doses:[]}; const row={id:uid(), medId:m.id, dose:(m.baselineDose!=null?m.baselineDose:(m.doses&&m.doses[0])||''), freq:'1x', status:'acute'}; // default Acute — no carryover until set Continuing
     D().regimen.push(row); this.logChange(row); Store.saveNow(); render(); },
   remove(row){ D().regimen=D().regimen.filter(r=>r!==row); Store.saveNow(); render(); },
   // Log an individual dose event — now opens a dialog so each dose carries an
@@ -2218,7 +2227,7 @@ const Rx = {
   // correlation, and the timestamp anchors the PK curve and lagged analyses).
   logDose(row){ const m=D().meds.find(x=>x.id===row.medId)||{};
     const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
-    let changeType=row.freq==='acute'?'acute':'acute', ts=Date.now(); // default a dose event to "acute"
+    let changeType=row.status==='continuing'?'chronic':'acute', ts=Date.now(); // continuing-med dose = chronic regimen; else acute event
     const dlg=el('div',{class:'dlg'});
     dlg.append(el('h3',{},'Log dose · '+(m.name||'med')));
     const doseIn=el('input',{type:'text',inputmode:'decimal',value:row.dose==null?'':row.dose,placeholder:(m.unit||'mg')});
@@ -2241,12 +2250,12 @@ const Rx = {
 };
 Views.meds=(v)=>{
   v.append(header('Meds',''));
-  v.append(el('p',{class:'muted',style:'margin-top:0'},'Your daily regimen. "Continuing" meds auto-apply every day until you change them. "Acute" means the dose/timing fluctuates — log those as they happen. Changes here are tracked for correlation.'));
+  v.append(el('p',{class:'muted',style:'margin-top:0'},'New meds default to "Acute" — logged per dose, no carryover. Set "Continuing" for a standing med that repeats every day at the same dose + interval/time. "Stopped" marks cessation from that day, and it no longer carries over. Changes here are tracked for correlation.'));
   const card=el('div',{class:'card'});
   card.append(el('div',{class:'row'}, el('h2',{},'Today\'s regimen'), el('div',{class:'spacer'}),
     el('button',{class:'btn sm',onclick:()=>Rx.addRow()},'+ Add row')));
   if(!D().regimen.length) card.append(el('p',{class:'muted'},'No medications yet. Tap "+ Add row".'));
-  D().regimen.forEach(row=>{ const m=D().meds.find(x=>x.id===row.medId)||{}; const stopped=row.status==='stopped'||row.freq==='stopped';
+  D().regimen.forEach(row=>{ const m=D().meds.find(x=>x.id===row.medId)||{}; if(!row.status)row.status='acute'; const stopped=row.status==='stopped';
     const rc=el('div',{style:`padding:11px 0;border-bottom:1px solid var(--line);opacity:${stopped?0.55:1}`});
     // med select
     const medSel=el('select',{onchange:e=>{ row.medId=D().meds[e.target.selectedIndex].id; Rx.logChange(row); Store.saveNow(); render(); }});
@@ -2254,15 +2263,16 @@ Views.meds=(v)=>{
     // dose
     const doseIn=el('input',{type:'text',inputmode:'decimal',value:row.dose,placeholder:(m.unit||'mg'),style:'width:70px',
       onchange:e=>{ const val=e.target.value.trim(); row.dose=val===''?'':(isNaN(+val)?val:+val); Rx.logChange(row); Store.save(); }});
-    // frequency
+    // frequency (interval / time-of-day) — only meaningful for a CONTINUING med that carries over
     const freqSel=el('select',{onchange:e=>{ row.freq=FREQS[e.target.selectedIndex][0]; Rx.logChange(row); Store.saveNow(); render(); }});
     FREQS.forEach(([val,lab])=>{ const o=el('option',{},lab); if(val===row.freq)o.selected=true; freqSel.append(o); });
-    // status
+    // status — Acute (default, doesn't carry over) · Continuing (carries daily at this dose+interval) · Stopped (ceased from today)
     const statSel=el('select',{onchange:e=>{ row.status=e.target.value; Rx.logChange(row); Store.saveNow(); render(); }});
-    [['continuing','Continuing'],['stopped','Stopped']].forEach(([val,lab])=>{ const o=el('option',{value:val},lab); if(val===row.status)o.selected=true; statSel.append(o); });
+    [['acute','Acute'],['continuing','Continuing'],['stopped','Stopped']].forEach(([val,lab])=>{ const o=el('option',{value:val},lab); if(val===row.status)o.selected=true; statSel.append(o); });
     rc.append(el('div',{class:'row',style:'gap:8px;margin-bottom:6px'}, el('div',{style:'flex:1'},medSel), doseIn, el('span',{class:'muted',style:'font-size:12px'},m.unit||'mg')));
+    // Frequency (interval/time-of-day) only shows for a continuing med — acute doses carry their own logged times
     rc.append(el('div',{class:'row',style:'gap:8px'},
-      el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb',style:'margin-bottom:3px'},'Frequency'),freqSel),
+      row.status==='continuing'?el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb',style:'margin-bottom:3px'},'Interval / time'),freqSel):null,
       el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb',style:'margin-bottom:3px'},'Status'),statSel)));
     rc.append(el('div',{class:'row',style:'gap:8px;margin-top:7px'},
       el('button',{class:'btn sm ghost',onclick:()=>Rx.logDose(row)},'＋ Log a dose'),
