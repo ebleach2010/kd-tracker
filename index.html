@@ -359,7 +359,7 @@ const Store = (()=>{
     weights:{alpha:.25}, // subjective-attenuation strength
     priors:JSON.parse(JSON.stringify(CONFIG.priors)),
     assessments:[], medLogs:[], supplementLogs:[], vitals:[], moodLogs:[],
-    events:[], episodes:[], regimen:[], regimenLog:[], skips:[], mealDays:{},
+    events:[], episodes:[], regimen:[], regimenLog:[], skips:[], mealDays:{}, ivig:[],
     literatureCache:null, prioReviewed:null,
   });
   let data;
@@ -411,6 +411,44 @@ const Stats = {
     for(let i=0;i<n;i++){ num+=(rx[i]-mx)*(ry[i]-my); dx+=(rx[i]-mx)**2; dy+=(ry[i]-my)**2; }
     const r=(dx&&dy)?num/Math.sqrt(dx*dy):0; return {r:clamp(r,-1,1),n};
   },
+  // Kendall's tau-b (rank, monotonic; better than Spearman for small-n tied sliders).
+  // Returns {r:tau, n, p:normal-approx two-sided p-value}.
+  kendall(x,y){ const pr=[]; for(let i=0;i<x.length;i++) if(x[i]!=null&&y[i]!=null&&!isNaN(x[i])&&!isNaN(y[i])) pr.push([+x[i],+y[i]]);
+    const n=pr.length; if(n<4) return {r:0,n,p:1};
+    let conc=0,disc=0,tx=0,ty=0;
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){ const a=pr[i][0]-pr[j][0], b=pr[i][1]-pr[j][1]; const s=Math.sign(a)*Math.sign(b);
+      if(a===0&&b===0){} else if(a===0){tx++;} else if(b===0){ty++;} else if(s>0)conc++; else disc++; }
+    const n0=n*(n-1)/2; const den=Math.sqrt((n0-tx)*(n0-ty))||1; const tau=clamp((conc-disc)/den,-1,1);
+    // significance via normal approx of Kendall's S
+    const varS=n*(n-1)*(2*n+5)/18; const S=conc-disc; const z=varS>0?(S)/Math.sqrt(varS):0;
+    const p=2*(1-this.normCdf(Math.abs(z)));
+    return {r:tau,n,p:clamp(p,0,1)};
+  },
+  normCdf(z){ // Abramowitz-Stegun approximation
+    const t=1/(1+0.2316419*Math.abs(z)); const d=0.3989423*Math.exp(-z*z/2);
+    let pr=d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));
+    return z>0?1-pr:pr;
+  },
+  // Distance correlation (0..1): detects ARBITRARY dependence incl. non-monotonic (U-shapes).
+  distanceCorr(x,y){ const px=[],py=[]; for(let i=0;i<x.length;i++) if(x[i]!=null&&y[i]!=null){ px.push(+x[i]); py.push(+y[i]); }
+    const n=px.length; if(n<6) return 0;
+    const dm=v=>{ const A=[]; for(let i=0;i<n;i++){A[i]=[];for(let j=0;j<n;j++)A[i][j]=Math.abs(v[i]-v[j]);} return A; };
+    const center=A=>{ const rm=A.map(r=>this.mean(r)); const cm=[]; for(let j=0;j<n;j++){let s=0;for(let i=0;i<n;i++)s+=A[i][j];cm[j]=s/n;} const gm=this.mean(rm);
+      const B=[]; for(let i=0;i<n;i++){B[i]=[];for(let j=0;j<n;j++)B[i][j]=A[i][j]-rm[i]-cm[j]+gm;} return B; };
+    const A=center(dm(px)), B=center(dm(py));
+    let ab=0,aa=0,bb=0; for(let i=0;i<n;i++)for(let j=0;j<n;j++){ ab+=A[i][j]*B[i][j]; aa+=A[i][j]*A[i][j]; bb+=B[i][j]*B[i][j]; }
+    const dcov=Math.sqrt(Math.max(0,ab)/(n*n)); const va=Math.sqrt(Math.max(0,aa)/(n*n)), vb=Math.sqrt(Math.max(0,bb)/(n*n));
+    return (va*vb>0)?clamp(dcov/Math.sqrt(va*vb),0,1):0;
+  },
+  // Benjamini-Hochberg FDR: given array of {p,...}, mark .fdr (survives at q) and .q (adjusted).
+  bh(items, q=0.1){ const arr=items.filter(i=>i.p!=null).sort((a,b)=>a.p-b.p); const m=arr.length;
+    let maxK=-1; arr.forEach((it,k)=>{ if(it.p<=((k+1)/m)*q) maxK=k; });
+    arr.forEach((it,k)=>{ it.fdr = k<=maxK; it.q = Math.min(1, it.p*m/(k+1)); }); return items;
+  },
+  // detrend a per-index series by subtracting a local rolling median (window ±w) → residuals.
+  detrend(raw, w=7){ return raw.map((x,i)=>{ if(x==null)return null; const win=[];
+    for(let j=Math.max(0,i-w);j<=Math.min(raw.length-1,i+w);j++) if(raw[j]!=null)win.push(raw[j]);
+    return win.length? x-this.median(win): 0; }); },
   // literature-shrunk estimate
   shrink(rObs,n,prior){ if(!prior) return rObs; return (prior.k0*prior.r0 + n*rObs)/(prior.k0+n); },
   // confidence 25–100 from |r|, n, reproducibility(0..1). <25 => returns 0 (suppress)
@@ -570,6 +608,21 @@ function header(title,sub,actions){
    Med PK — transparent piecewise curve for "how on board is this stimulant?"
    ========================================================================== */
 const Med = {
+  // IVIG "effect on board" as a function of days since an infusion (population-average model,
+  // from the research brief): a fast ACUTE term (peaks ~day 1, gone ~day 7) + a slow SUSTAINED
+  // exponential decay tied to IgG half-life (~23d). Params vary by route/schedule.
+  IVIG_PARAMS:{
+    iv:{ wA:0.4, wS:0.6, tr:0.4, tf:3, tHalf:23 },
+    subq:{ wA:0.1, wS:0.9, tr:2, tf:5, tHalf:23 },
+  },
+  ivigEffect(daysSince, route){ if(daysSince==null||daysSince<0) return {acute:0,sustained:0,total:0};
+    const P=this.IVIG_PARAMS[route==='subq'?'subq':'iv']; const t=daysSince;
+    // acute normalized so its own peak = 1
+    const tp=(P.tr*P.tf/(P.tf-P.tr))*Math.log(P.tf/P.tr); const norm=1/(Math.exp(-tp/P.tf)-Math.exp(-tp/P.tr))||1;
+    const acute=clamp(norm*(Math.exp(-t/P.tf)-Math.exp(-t/P.tr)),0,1);
+    const sustained=clamp(Math.exp(-Math.LN2/P.tHalf*t),0,1);
+    return { acute:+acute.toFixed(3), sustained:+sustained.toFixed(3), total:+(P.wA*acute+P.wS*sustained).toFixed(3) };
+  },
   pkEffect(pk, mins){ if(!pk||mins==null||mins<0) return {level:0,phase:'—'};
     const onset=pk.onset||30, peak=pk.peak||120, duration=pk.duration||360;
     if(mins<onset) return {level:(mins/onset)*0.1, phase:'not yet active'};      // absorbing
@@ -587,9 +640,14 @@ const Derive = {
     const scan=(ts,isIvig)=>{ if(isIvig&&ts<=before&&(last==null||ts>last)) last=ts; };
     D().assessments.forEach(a=>(a.meds||[]).forEach(m=>{if(m.medId==='ivig')scan(a.ts,true);}));
     D().medLogs.forEach(m=>{if(m.medId==='ivig')scan(m.ts,true);});
+    (D().ivig||[]).forEach(e=>scan(e.ts,true));
     return last;
   },
   daysSinceIVIG(ts){ const l=this.lastIVIG(ts); return l==null?null:Math.floor((ts-l)/DAY); },
+  ivigInfo(ts){ let e=null; (D().ivig||[]).forEach(x=>{ if(x.ts<=ts&&(!e||x.ts>e.ts))e=x; }); return e; },
+  ivigContext(ts){ const d=this.daysSinceIVIG(ts); if(d==null)return null;
+    const info=this.ivigInfo(ts); const eff=Med.ivigEffect(d, info?info.route:'iv');
+    return { daysSince:d, ...eff, schedule:info?info.schedule:null, route:info?info.route:'iv', setting:info?info.setting:null }; },
   ivigCyclePhase(ts){ const d=this.daysSinceIVIG(ts); if(d==null)return null; return clamp(d/14,0,2); },
   episodeActive(kind,ts){ return D().episodes.some(e=>e.kind===kind&&e.startTs<=ts&&(e.endTs==null||e.endTs>=ts)); },
   daysSinceEnded(kind,ts){ let best=null;
@@ -1287,6 +1345,19 @@ Views.home=(v)=>{
       el('button',{class:'btn',style:'flex:1;border-color:rgba(255,207,92,.5);color:#ffeec2',onclick:()=>logBusy()}, '😐 Too busy')),
     el('button',{class:'btn ghost block',style:'margin-top:8px',onclick:()=>clearMenu()},'🧹 Clear…')));
 
+  // IVIG infusion day toggle — one-day marker (auto-off next day). Prompts for details.
+  const ivigToday=(D().ivig||[]).find(e=>dayKey(e.ts)===dayKey(Date.now()));
+  v.append(el('div',{class:'card'},
+    el('h2',{},'IVIG'),
+    el('div',{class:'tgl'+(ivigToday?' on':''),style:'margin-top:8px'},
+      el('div',{class:'sw',style:'cursor:pointer',onclick:()=>{
+        if(ivigToday){ D().ivig=D().ivig.filter(e=>e!==ivigToday); Store.saveNow(); render(); }
+        else IVIGLog.open(); }}),
+      el('div',{class:'tinfo'}, el('b',{},'Infusion today'),
+        el('span',{}, ivigToday?(cap(ivigToday.route)+' · '+ivigToday.schedule+' · '+ivigToday.setting):'Off — flip on your maintenance IVIG day'))),
+    (()=>{ const ctx=Derive.ivigContext(Date.now()); return ctx?el('p',{class:'muted',style:'font-size:11.5px;margin:8px 0 0'},
+      'Day '+ctx.daysSince+' since last infusion · modeled effect on board '+Math.round(ctx.total*100)+'% (acute '+Math.round(ctx.acute*100)+'% · sustained '+Math.round(ctx.sustained*100)+'%)'):null; })()));
+
   // episode toggles — flip the switch to start/stop; tap the right side to adjust the time/date
   v.append(el('div',{class:'card'},
     el('h2',{},'Active states'),
@@ -1360,6 +1431,19 @@ function clearMenu(){ const t=dayKey(Date.now()); const d=D();
   dlg.append(el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Done')));
   scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim);
 }
+function cap(s){ return s?s.charAt(0).toUpperCase()+s.slice(1):s; }
+const IVIGLog={ open(){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+  let schedule='biweekly', route='iv', setting='home';
+  const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'IVIG infusion today'));
+  dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Schedule'),
+    seg(['Biweekly','Monthly'],'Biweekly',x=>schedule=x.toLowerCase())));
+  dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Route'),
+    seg(['IV','SubQ'],'IV',x=>route=x==='SubQ'?'subq':'iv')));
+  dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Setting'),
+    seg(['At-home maintenance','Inpatient'],'At-home maintenance',x=>setting=x.startsWith('At-home')?'home':'inpatient')));
+  dlg.append(el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Cancel'),
+    el('button',{class:'btn primary',onclick:()=>{ D().ivig.push({id:uid(),ts:Date.now(),schedule,route,setting}); Store.saveNow(); close(); toast('IVIG infusion logged 💉'); render(); }},'Log')));
+  scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim); } };
 const MoodLog={ openWake(forTs){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
   const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'Morning mood'+(forTs?' · '+fmtD(forTs):'')));
   let val=5; dlg.append(makeSlider({key:'moodWake',label:'How do you feel on waking? (terrible → amazing)'},5,v=>val=v));
@@ -1508,8 +1592,10 @@ const Insights = {
         v['rx_'+mid+'_active']=(st.status==='stopped'||st.freq==='stopped')?0:1;
         v['rx_'+mid+'_freqN']=FREQ_ORD[st.freq]!=null?FREQ_ORD[st.freq]:0;
         if(typeof st.dose==='number')v['rx_'+mid+'_dose']=st.dose; });
-      // derived episode/IVIG
+      // derived episode/IVIG (incl. PK-informed effect-on-board: acute + sustained)
       v.daysSinceIVIG=Derive.daysSinceIVIG(ts);
+      const ivc=Derive.ivigContext(ts);
+      if(ivc){ v.ivig_effect=Math.round(ivc.total*100); v.ivig_acute=Math.round(ivc.acute*100); v.ivig_sustained=Math.round(ivc.sustained*100); }
       D().toggleTypes.forEach(t=>{ v['ep_'+t.id+'_active']=Derive.episodeActive(t.id,ts)?1:0;
         const since=Derive.daysSinceEnded(t.id,ts); if(since!=null&&since<=10)v['ep_'+t.id+'_after']=since; });
       // weekly objective + indices
@@ -1534,6 +1620,9 @@ const Insights = {
     V.glucoseStability={label:'Glucose stability % (day)',kind:'predictor'}; V.glucoseSpike={label:'Glucose spike (daily max)',kind:'predictor'};
     V.glucoseTrough={label:'Glucose trough (daily min)',kind:'predictor'}; V.glucoseRange={label:'Glucose swing (max−min)',kind:'predictor'};
     V.daysSinceIVIG={label:'Days since IVIG',kind:'predictor'};
+    V.ivig_effect={label:'IVIG effect on board (PK)',kind:'predictor'};
+    V.ivig_acute={label:'IVIG acute effect (first days)',kind:'predictor'};
+    V.ivig_sustained={label:'IVIG sustained level (PK)',kind:'predictor'};
     V.tooUnwell={label:'Too unwell to log (crash day)',kind:'predictor'};
     V.partialDay={label:'Partial entry (too unwell to finish)',kind:'predictor'};
     V.moodWake={label:'Morning mood',kind:'predictor'}; V.moodEnd={label:'End-of-day mood',kind:'symptom'};
@@ -1566,53 +1655,89 @@ const Insights = {
     const keys=Object.keys(V);
     const outcomes=keys.filter(k=>V[k].kind==='symptom'||V[k].kind==='objective');
     const predictors=keys.filter(k=>V[k].kind!=='objective');
-    const findings=[];
     const lags=[0,1,2,3,7]; // acute (same/next-day) → subacute/chronic (up to a week later)
-    const series=k=>vecs.map(v=>v[k]);
+    const series=k=>vecs.map(v=>v[k]==null?null:+v[k]);
+    // precompute detrended residuals (subtract local rolling median) to guard against
+    // spurious shared-trend correlations, and a fast day→index map for lag alignment.
+    const detr={}; [...new Set([...predictors,...outcomes])].forEach(k=>{ detr[k]=Stats.detrend(series(k),7); });
+    const idxByDay={}; vecs.forEach((v,i)=>{ idxByDay[v._day]=i; });
+    const tgtIndex=(v,lag)=>{ const d=new Date(v._ts+lag*DAY); return idxByDay[dayKey(d.getTime())]; };
+    const pending=[];
     for(const pk of predictors){
-      const pv=series(pk).map(x=>x==null?null:+x);
-      const present=pv.filter(x=>x!=null);
+      const pv=series(pk); const present=pv.filter(x=>x!=null);
       if(present.length<5) continue;
-      // low-variance guard: flag only NEAR-CONSTANT exposures (≥90% identical), e.g. a
-      // steadily-dosed med — those can't yield honest correlations. Balanced binaries pass.
       const counts={}; present.forEach(x=>{const kk=Math.round(x*100);counts[kk]=(counts[kk]||0)+1;});
-      const topFrac=Math.max(...Object.values(counts))/present.length;
-      const lowVar=topFrac>0.9;
-      for(const ok of outcomes){
-        if(ok===pk) continue;
+      const lowVar=Math.max(...Object.values(counts))/present.length>0.9; // near-constant → skip level corr
+      for(const ok of outcomes){ if(ok===pk) continue;
         for(const lag of lags){
-          // align predictor day t with outcome day t+lag by _ts
-          const xs=[],ys=[];
-          vecs.forEach((v,i)=>{ if(v[pk]==null)return; const tgt=vecs.find(w=>Math.round((w._ts-v._ts)/DAY)===lag);
-            if(tgt&&tgt[ok]!=null){ xs.push(+v[pk]); ys.push(+tgt[ok]); } });
-          if(xs.length<5) continue;
-          const {r,n}=Stats.spearman(xs,ys);
-          if(lowVar && lag===0) continue; // suppress level corr for constant predictors
-          // reproducibility: split-half sign agreement
-          const half=Math.floor(xs.length/2);
-          const r1=Stats.spearman(xs.slice(0,half),ys.slice(0,half)).r;
-          const r2=Stats.spearman(xs.slice(half),ys.slice(half)).r;
+          const xs=[],ys=[],dxs=[],dys=[];
+          vecs.forEach((v,i)=>{ if(v[pk]==null)return; const ti=tgtIndex(v,lag);
+            if(ti!=null && vecs[ti][ok]!=null){ xs.push(+v[pk]); ys.push(+vecs[ti][ok]);
+              if(detr[pk][i]!=null&&detr[ok][ti]!=null){ dxs.push(detr[pk][i]); dys.push(detr[ok][ti]); } } });
+          if(xs.length<6) continue;
+          if(lowVar && lag===0) continue;
+          const kr=Stats.kendall(xs,ys);                                   // raw monotonic
+          const kd=dxs.length>=6?Stats.kendall(dxs,dys):{r:kr.r,n:kr.n,p:kr.p}; // detrended (honest)
+          const dcor=lag===0?Stats.distanceCorr(xs,ys):0;                  // general/non-monotonic (concurrent only, for speed)
+          const tauRaw=kr.r, tauDet=kd.r, n=kr.n, pval=kd.p;
+          const trendDriven = Math.abs(tauRaw)>0.28 && Math.abs(tauDet)<0.15;   // vanished after detrending
+          const nonMonotonic = dcor>0.38 && Math.abs(tauDet)<0.2;              // dependence but weak monotonic
+          const src = dxs.length>=8?[dxs,dys]:[xs,ys]; const half=Math.floor(src[0].length/2);
+          const r1=Stats.kendall(src[0].slice(0,half),src[1].slice(0,half)).r;
+          const r2=Stats.kendall(src[0].slice(half),src[1].slice(half)).r;
           const repro=(Math.sign(r1)===Math.sign(r2)&&Math.abs(r1)>.1&&Math.abs(r2)>.1)?0.9:(Math.sign(r1)===Math.sign(r2)?0.55:0.2);
           const prior=this.prior(pk,ok);
-          const rEst=Stats.shrink(r,n,prior);
+          const effR = nonMonotonic ? Math.max(Math.abs(tauDet), dcor*0.7) : Math.abs(tauDet);
+          const signed = (tauDet<0 && !nonMonotonic) ? -effR : effR;
+          const rEst=Stats.shrink(signed, n, prior);
           let conf=Stats.confidence(rEst,n,repro);
-          // ad-hoc note tags are lightly weighted (discounted confidence)
           if(pk.startsWith('note_')||ok.startsWith('note_')) conf=Math.round(conf*0.7);
+          if(trendDriven) conf=Math.round(conf*0.5);
           if(conf<25) continue;
-          findings.push({ pk, ok, pLabel:V[pk].label, oLabel:V[ok].label, r:+rEst.toFixed(2), rObs:+r.toFixed(2), n, lag,
-            conf, prior:!!prior, timing: lag===0?'same-day':(lag===1?'next-day':(lag>=7?'a week later':lag+'-day delay')),
-            chronic: lag>=7||pk.endsWith('_afterStop')||pk.endsWith('_streakLen')||pk.endsWith('_chronic')||pk.endsWith('_after'),
-            after: pk.endsWith('_after')||pk.endsWith('_afterStop'), confound: (pk.startsWith('ep_')&&ok==='sleepQuality') });
+          pending.push({ pk, ok, lag, tauRaw:+tauRaw.toFixed(2), tauDet:+tauDet.toFixed(2), dcor:+dcor.toFixed(2),
+            n, p:pval, prior:!!prior, conf, trendDriven, nonMonotonic, r:+rEst.toFixed(2), rObs:+tauRaw.toFixed(2) });
         }
       }
     }
-    // dedupe: keep best lag per (pk,ok)
-    const best={};
-    findings.forEach(f=>{ const k=f.pk+'|'+f.ok; if(!best[k]||f.conf>best[k].conf)best[k]=f; });
-    const list=Object.values(best).sort((a,b)=>b.conf-a.conf);
+    // keep best lag per pair, then FDR-correct across surviving pairs
+    const best={}; pending.forEach(f=>{ const k=f.pk+'|'+f.ok; if(!best[k]||f.conf>best[k].conf)best[k]=f; });
+    let list=Object.values(best);
+    Stats.bh(list, 0.1);
+    list.forEach(f=>this.decorate(f, V));
+    list.sort((a,b)=>b.conf-a.conf);
     const interactions=this.findInteractions(vecs, V, best);
     const pathways=this.findPathways(list, V);
-    return { locked:false, nDays, spanDays:Math.round(spanDays), findings:list, interactions, pathways, missedDays:this.gapDays(vecs) };
+    const ws=this.wellSampledCount();
+    return { locked:false, nDays, spanDays:Math.round(spanDays), findings:list, interactions, pathways,
+      missedDays:this.gapDays(vecs), wellSampled:ws, laterUnlocked: ws>=100 };
+  },
+  // attach human-readable type + plain-language definition to a finding
+  decorate(f, V){ f.pLabel=V[f.pk].label; f.oLabel=V[f.ok].label;
+    f.timing = f.lag===0?'same-day':(f.lag===1?'next-day':(f.lag>=7?'a week later':f.lag+'-day delay'));
+    f.chronic = f.lag>=7||f.pk.endsWith('_afterStop')||f.pk.endsWith('_streakLen')||f.pk.endsWith('_chronic')||f.pk.endsWith('_after');
+    f.after = f.pk.endsWith('_after')||f.pk.endsWith('_afterStop');
+    f.confound = (f.pk.startsWith('ep_')&&f.ok==='sleepQuality');
+    const dirWord = f.nonMonotonic?'Non-monotonic':(f.tauDet>0?'Positive':(f.tauDet<0?'Negative':'No'));
+    f.typeLabel = dirWord+' · '+(f.lag===0?'concurrent':'lagged '+f.lag+'d')+' · '+(f.nonMonotonic?'nonlinear':'monotonic')+(f.trendDriven?' · possibly trend-driven':'')+(f.fdr?'':' · not FDR-significant');
+    f.definition = f.nonMonotonic
+      ? 'Non-monotonic: '+f.pLabel.toLowerCase()+' and '+f.oLabel.toLowerCase()+' are related but not in a single straight direction (e.g. both too little and too much track with change) — inspect the shape.'
+      : (f.tauDet>0
+        ? 'Positive'+(f.lag>0?' ('+f.timing+')':'')+': as '+f.pLabel.toLowerCase()+' goes up, '+f.oLabel.toLowerCase()+' tends to go up too.'
+        : 'Negative'+(f.lag>0?' ('+f.timing+')':'')+': as '+f.pLabel.toLowerCase()+' goes up, '+f.oLabel.toLowerCase()+' tends to go down.');
+  },
+  // "well-sampled" day = a complete day: morning (day) + evening (night) comprehensive
+  // assessments, plus meds/meals/vitals/sleep present. Gates the "feasible-later" analyses.
+  wellSampledCount(){ const byDay={}; D().assessments.forEach(a=>{ (byDay[dayKey(a.ts)]=byDay[dayKey(a.ts)]||[]).push(a); });
+    let ct=0;
+    Object.keys(byDay).forEach(dk=>{ const list=byDay[dk];
+      const morning=list.some(a=>(a.cadence==='daily'||a.cadence==='weekly')&&a.variant==='am');
+      const evening=list.some(a=>(a.cadence==='daily'||a.cadence==='weekly')&&(a.variant==='pm'||a.variant==null));
+      const md=(D().mealDays||{})[dk]; const meals=md&&['breakfast','lunch','dinner'].every(m=>md[m]!=null);
+      const glucose=list.some(a=>(a.glucose||[]).length)||D().vitals.some(x=>x.type==='glucose'&&dayKey(x.ts)===dk);
+      const sleep=list.some(a=>a.sleep&&a.sleep.totalSleepMin!=null);
+      if(morning&&evening&&meals&&glucose&&sleep) ct++;
+    });
+    return ct;
   },
   // COMPOUND / INTERACTION effects: does exposure A *together with* B predict an outcome
   // beyond either alone? (e.g. caffeine + Concerta → agitation). Bounded to a curated set.
@@ -1839,22 +1964,20 @@ Views.insights=(v)=>{
     el('div',{class:'bt'}, el('b',{},r.findings.length+' patterns found across '+r.nDays+' days'),
       el('span',{}, (r.missedDays?r.missedDays+' missed days lower confidence. ':'')+'Many pairs are tested — treat lower confidences as tentative. Correlation ≠ causation.'))));
 
-  // COMPOUND effects (two things together)
-  if(r.interactions&&r.interactions.length){ const c=el('div',{class:'card'});
-    c.append(el('h2',{},'Combined effects'), el('p',{class:'muted',style:'margin:2px 0 8px'},'Two things that together predict an outcome more than either alone.'));
+  // "Feasible-later" analyses (compound/moderation) — read data continuously but stay
+  // INACTIVE until 100 well-sampled days accumulate (they need more data to be honest).
+  const ws=r.wellSampled||0;
+  if(r.laterUnlocked && r.interactions&&r.interactions.length){ const c=el('div',{class:'card'});
+    c.append(el('h2',{},'Combined effects'), el('p',{class:'muted',style:'margin:2px 0 8px'},'Two things that together predict an outcome more than either alone (moderation).'));
     r.interactions.slice(0,8).forEach(it=>c.append(el('div',{style:'padding:8px 0;border-bottom:1px solid var(--line)'},
       el('div',{class:'row'}, el('div',{style:'flex:1;font-size:13.5px;font-weight:600'}, it.aLabel+' + '+it.bLabel+' → '+it.oLabel),
         el('b',{style:`color:${confColor(it.conf)}`},it.conf+'%')),
       el('div',{class:'muted',style:'font-size:11px'}, (it.r>0?'stronger together':'opposite together')+' · vs alone '+it.mainA+'% / '+it.mainB+'% · n='+it.n))));
     v.append(c); }
-  // PATHWAYS (mediation chains)
-  if(r.pathways&&r.pathways.length){ const c=el('div',{class:'card'});
-    c.append(el('h2',{},'Possible pathways'), el('p',{class:'muted',style:'margin:2px 0 8px'},'Candidate chains where one thing may act through another. Suggestive, not proven.'));
-    r.pathways.slice(0,8).forEach(p=>c.append(el('div',{style:'padding:8px 0;border-bottom:1px solid var(--line)'},
-      el('div',{class:'row'}, el('div',{style:'flex:1;font-size:13px;font-weight:600'}, p.xLabel+' → '+p.mLabel+' → '+p.yLabel),
-        el('b',{style:`color:${confColor(p.conf)}`},p.conf+'%')),
-      el('div',{class:'muted',style:'font-size:11px'}, 'via '+p.mLabel.toLowerCase()))));
-    v.append(c); }
+  else if(!r.laterUnlocked){ v.append(el('div',{class:'card',style:'opacity:.75'},
+    el('div',{class:'row'}, el('h3',{style:'margin-top:0;flex:1'},'🔒 Advanced analyses'), el('span',{class:'muted',style:'font-size:12px'},ws+' / 100')),
+    el('p',{class:'muted',style:'font-size:12px;margin-bottom:8px'},'Compound / moderation and dose-response-shape analyses stay inactive (but keep reading your data) until you have 100 well-sampled days — a complete day with morning + evening comprehensive assessments plus meds, meals, vitals and sleep. This isn\'t a gimmick: these need more data to be honest.'),
+    el('div',{style:'height:6px;border-radius:6px;background:var(--line)'}, el('div',{style:`height:100%;width:${Math.min(100,ws)}%;border-radius:6px;background:var(--amber)`})))); }
 
   // filter chips
   const chips=el('div',{class:'seg',style:'margin-bottom:12px;flex-wrap:wrap'});
@@ -1870,23 +1993,35 @@ Views.insights=(v)=>{
 };
 function findingCard(f){
   const card=el('div',{class:'card',style:'padding:13px'});
-  const dir=f.r>0?'↑ together':'↓ opposite';
   card.append(el('div',{class:'row'},
     el('div',{style:'flex:1'},
       el('div',{style:'font-size:14px;font-weight:700'}, f.pLabel+' → '+f.oLabel),
-      el('div',{class:'muted',style:'font-size:11.5px'}, dir+' · '+f.timing+(f.after?' (after it ends)':'')+' · n='+f.n)),
+      el('div',{class:'muted',style:'font-size:11px'}, (f.typeLabel||'')+' · n='+f.n)),
     el('div',{style:`text-align:right`},
       el('div',{style:`font-size:20px;font-weight:800;color:${confColor(f.conf)}`},f.conf+'%'),
       el('div',{class:'muted',style:'font-size:9px'},'confidence'))));
+  // plain-language definition (the "type + definition below the correlation")
+  card.append(el('div',{class:'muted',style:'font-size:12px;margin:6px 0;line-height:1.45'}, f.definition||''));
   // confidence bar
-  card.append(el('div',{style:'height:5px;border-radius:5px;background:var(--line);margin:8px 0 4px'},
+  card.append(el('div',{style:'height:5px;border-radius:5px;background:var(--line);margin:4px 0'},
     el('div',{style:`height:100%;width:${f.conf}%;border-radius:5px;background:${confColor(f.conf)}`})));
+  // honest badges
+  const badges=el('div',{class:'row wrap',style:'gap:5px;margin-top:6px'});
+  const badge=(txt,col)=>el('span',{class:'tag',style:`background:${col}22;color:${col};font-size:9px`},txt);
+  if(f.fdr) badges.append(badge('FDR-significant','#3dff9a')); else badges.append(badge('exploratory','#ffcf5c'));
+  if(f.nonMonotonic) badges.append(badge('non-monotonic','#b06bff'));
+  if(f.trendDriven) badges.append(badge('possibly trend-driven','#ff9a5c'));
+  if(f.confound) badges.append(badge('possibly confounded','#ffcf5c'));
+  if(f.prior) badges.append(badge('has literature prior','#4d9dff'));
+  card.append(badges);
   const detail=el('div',{class:'muted',style:'display:none;font-size:11.5px;margin-top:8px;line-height:1.6'});
-  detail.innerHTML=`observed r=${f.rObs} · shrunk estimate=${f.r} · n=${f.n} pairs · lag=${f.lag}d`
+  detail.innerHTML=`Kendall τ (raw)=${f.rObs} · detrended τ=${f.tauDet} · distance-corr=${f.dcor} · n=${f.n} day-pairs · lag=${f.lag}d · p=${f.p!=null?f.p.toFixed(3):'—'} (FDR ${f.fdr?'passed':'not passed'})`
     +(f.prior?' · nudged by a literature prior':' · purely data-driven')
-    +(f.confound?'<br><b style="color:var(--amber)">⚠ possibly confounded</b> — these may share a common cause.':'')
-    +'<br>Confidence blends effect size, sample size (precision), and reproducibility across time windows.';
-  card.append(el('button',{class:'btn sm ghost',style:'margin-top:4px;padding:4px 8px',
+    +(f.trendDriven?'<br><b style="color:#ff9a5c">⚠ trend-driven</b> — the link mostly vanished after removing slow trends, so it may be a shared-trend artifact.':'')
+    +(f.nonMonotonic?'<br><b style="color:var(--purple)">non-monotonic</b> — detected by distance correlation; the relationship isn\'t a single straight direction.':'')
+    +(f.confound?'<br><b style="color:var(--amber)">⚠ possibly confounded</b> — may share a common cause.':'')
+    +'<br>Confidence uses the DETRENDED effect (guards against spurious trends), sample size, reproducibility across time-windows, and is FDR-corrected for the many pairs tested.';
+  card.append(el('button',{class:'btn sm ghost',style:'margin-top:6px;padding:4px 8px',
     onclick:()=>{detail.style.display=detail.style.display==='none'?'block':'none';}},'How this was computed'),detail);
   return card;
 }
