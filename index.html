@@ -244,7 +244,10 @@ const CONFIG = {
   // per-notch practical descriptors. sliderDesc[key] = array indexed by value.
   // For 1–10 items index 1..10 used; index0 unused. Filled by buildDesc().
   sliderDesc:{},
-  glucoseSlots:['Wake','Noon','4pm','8pm','Bedtime'],
+  // Meal-anchored glucose slots (Eric): test around meals regardless of whether one was eaten,
+  // so the engine can relate meal-eaten/skipped to blood sugar + stability. "Fasting" = the
+  // morning pre-breakfast reading.
+  glucoseSlots:['Fasting','Post-breakfast','Post-lunch','Post-dinner','Bedtime'],
   // meal-relation tag for a glucose reading (postprandial context matters for interpretation:
   // fasting/pre-meal vs post-meal spikes read very differently). Selectable on every reading.
   glucoseRel:['—','Fasting','Before meal','After meal','Before snack','After snack'],
@@ -311,39 +314,35 @@ const CONFIG = {
   ],
 };
 function buildDesc(){
-  // Generic 1–10 anchor descriptors, overridden per-item where meaningful.
-  const g=(one,mid,ten)=>{const a=Array(11).fill('');a[1]=one;a[5]=mid;a[10]=ten;return a;};
+  // Every notch 1–10 gets its OWN descriptor (no more repeated 1–4 fallbacks). t10 fills all ten.
+  const t10=(...a)=>{const arr=Array(11).fill('');for(let i=0;i<10;i++)arr[i+1]=a[i]||'';return arr;};
   const D=CONFIG.sliderDesc;
-  D.cogFatigue=(()=>{const a=Array(11).fill('');
-    a[1]='Excellent cognitive performance, at/near healthy baseline';
-    a[3]='Slight mental tiredness after long focus';
-    a[5]='Average performance; significant fatigue after a task or an hour of focus';
-    a[7]='Fogging fast; short tasks drain me';
-    a[10]='Cannot sustain any focused thought'; return a;})();
-  D.fatigue=g('Fully energized','Notably tired, pushing through','Bedbound-level exhaustion');
-  D.brainFog=g('Crystal clear thinking','Cloudy, word-finding slips','Thick fog, cannot form thoughts');
-  D.depression=g('Bright, hopeful mood','Low but functioning','Severe, unable to feel anything good');
-  D.anxiety=g('Calm and settled','Noticeable worry/tension','Panic-level, overwhelming');
-  D.overstim=g('Comfortable with input','Sounds/lights starting to grate','Sensory overload, need to flee');
-  // higher = BETTER (matches the o:-1 orientation in scoreMap/neuroWeights and the label)
-  D.sleepQuality=g('No real sleep / unrefreshing','Broken but okay','Deep, fully restorative');
-  D.visualDistortion=g('Vision normal vs baseline','Mild shimmer/afterimages','Severe distortion, hard to see');
-  // higher = BETTER (more engaged) — matches o:-1 orientation and the label
-  D.emotEngagement=g('Completely numb/detached','Somewhat flat','Fully present with people');
-  D.emotStressors=g('None weighing on me','A few nagging worries','Crushing emotional load');
-  D.envStressors=g('Calm environment','Some chaos/demands','Overwhelming environment');
-  D.generalStress=g('Totally relaxed','Moderate ongoing stress','Maxed-out stress');
-  D.maritalStress=g('Connected, at ease','Some friction','Severe relationship strain');
-  D.socializing=g('No social contact','A moderate amount','Constant intense socializing');
-  D.rumination=g('Mind quiet','Looping on some things','Trapped in relentless loops');
-  D.agitation=g('None — calm & settled','Restless, on edge, irritable','Severe agitation, can\'t sit still');
-  D.iceBrain=g('No cold-brain sensation','Noticeable cold feeling','Intense freezing-brain feeling');
-  D.pem=g('No crash','Moderate post-exertional crash','Total crash, wiped out for days');
+  // higher = WORSE unless noted. Distinct wording at every step.
+  D.fatigue=t10('Fully energized, sharp','Rested, only minor dips','Slightly tired but fine','Noticeably tired, still productive','Tired, pushing through tasks','Heavy, real effort to keep going','Draining fast, need frequent rest','Exhausted, most things feel hard','Barely upright, resting often','Bedbound-level exhaustion');
+  D.cogFatigue=t10('Excellent focus, near baseline','Sharp, only long tasks tire me','Slight mental tiredness after focus','Focus dips after moderate effort','Real fatigue after a task / an hour','Concentration slipping quickly','Fogging fast, short tasks drain me','Hard to hold a train of thought','A few minutes of focus, then done','Cannot sustain any focused thought');
+  D.brainFog=t10('Crystal clear thinking','Mostly clear, rare slips','Slight cloudiness','Occasional word-finding slips','Cloudy, noticeable slips','Thinking feels muffled','Thick fog, slow to process','Struggling to form sentences','Barely tracking conversation','Cannot form thoughts');
+  D.depression=t10('Bright, hopeful','Content and steady','Slightly low','Low but engaged','Low but functioning','Persistent heaviness','Struggling to find any good','Deep low, little pleasure','Barely any hope left','Severe — can\'t feel anything good');
+  D.anxiety=t10('Calm and settled','Mostly at ease','Slight unease','Mild worry','Noticeable worry / tension','Frequent nervousness','Tense, hard to relax','Anxious with physical symptoms','Near-panic waves','Panic-level, overwhelming');
+  D.overstim=t10('Comfortable with any input','Fine, minor sensitivity','Slightly sensitive','Sounds/lights mildly grating','Input starting to grate','Wanting to reduce stimulation','Input hard to tolerate','Need to escape stimulation','Overloaded and distressed','Sensory overload, need to flee');
+  D.visualDistortion=t10('Vision normal vs baseline','Barely any change','Slight shimmer occasionally','Mild afterimages / shimmer','Noticeable shimmer','Frequent visual noise','Distortions intruding','Hard to focus visually','Vision markedly distorted','Severe distortion, hard to see');
+  D.emotStressors=t10('None weighing on me','Barely any','One small worry','A couple of nagging worries','A few nagging worries','Several weighing on me','Heavy emotional load','Preoccupied by stressors','Nearly consuming','Crushing emotional load');
+  D.envStressors=t10('Calm environment','Mostly peaceful','Minor demands','Some noise / demands','Some chaos / demands','Busy, pressing environment','Chaotic surroundings','Overwhelming demands','Relentless environment','Overwhelming environment');
+  D.generalStress=t10('Totally relaxed','At ease','Slight tension','Mild ongoing stress','Moderate ongoing stress','Elevated stress','High, hard to unwind','Very stressed','Near maxed-out','Maxed-out stress');
+  D.maritalStress=t10('Connected, at ease','Warm and comfortable','Minor friction','Some friction','Ongoing friction','Recurring tension','Frequent conflict','Significant strain','Serious distance / conflict','Severe relationship strain');
+  D.rumination=t10('Mind quiet','Mostly settled','Occasional looping','Some repetitive thoughts','Looping on some things','Hard to stop looping','Frequently stuck on thoughts','Persistent loops','Nearly constant looping','Trapped in relentless loops');
+  D.agitation=t10('Calm & settled','Relaxed','Slightly restless','A bit on edge','Restless, on edge','Irritable, fidgety','Wound up, hard to sit still','Very agitated','Can barely contain it','Severe — can\'t sit still');
+  D.iceBrain=t10('No cold-brain sensation','Barely any','Faint coolness','Mild cold feeling','Noticeable cold feeling','Distinct cold sensation','Cold and uncomfortable','Strong freezing feeling','Intense, distracting cold','Intense freezing-brain feeling');
+  D.pem=t10('No crash','Slight heaviness after effort','Mild post-exertional dip','Noticeable dip after activity','Moderate post-exertional crash','Clear crash, need to rest','Significant crash, wiped for hours','Heavy crash, wiped for a day','Severe, multi-day crash','Total crash, wiped for days');
+  // higher = BETTER (matches o:-1 orientation + the label): 1 = worst, 10 = best
+  D.sleepQuality=t10('No real sleep / unrefreshing','Barely slept','Restless, poor','Broken, some rest','Broken but okay','Okay, a bit unrefreshed','Fairly restful','Good, mostly restful','Deep and restful','Deep, fully restorative');
+  D.emotEngagement=t10('Completely numb / detached','Very flat','Mostly flat','A little detached','Somewhat flat','Half-present','Fairly present','Engaged with people','Warm and connected','Fully present with people');
+  // amount slider — 1 = none, 10 = a lot (o:-1: more contact = better for QOL)
+  D.socializing=t10('No social contact','A brief hello','A little contact','One short interaction','A moderate amount','A few good interactions','Fairly social day','Lots of connection','Very social','Constant intense socializing');
   D.nicotine=(()=>{const a=Array(5).fill('');a[1]='None';a[2]='Light';a[3]='Moderate';a[4]='Heavy';return a;})();
   const mood=(()=>{const a=Array(11).fill('');a[1]='Terrible day';a[2]='Very bad';a[3]='Rough';a[4]='Below average';a[5]='Okay day';a[6]='Decent';a[7]='Good day';a[8]='Really good';a[9]='Great';a[10]='Amazing day';return a;})();
   D.moodEnd=mood; D.moodWake=mood.slice();
-  D.mental=g('No mental exertion','Moderate cognitive work','Extreme mental load');
-  D.physical=g('Sedentary','Moderate activity','Extreme physical exertion');
+  D.mental=t10('No mental exertion','Very light','Light thinking','Some focused work','Moderate cognitive work','Sustained focus','Demanding mental work','Heavy cognitive load','Intense, draining','Extreme mental load');
+  D.physical=t10('Sedentary','Barely moved','Light movement','Some activity','Moderate activity','Active','Quite active','Hard physical effort','Very strenuous','Extreme physical exertion');
 }
 buildDesc();
 
@@ -994,7 +993,7 @@ const Assess = {
   step_vitals(b, step){ const d=this.active.draft;
     b.append(el('h3',{},'Glucose (mg/dL)'));
     const g=el('div',{class:'grid2'});
-    const slots = (step&&step.wakeOnly) ? ['Wake'] : CONFIG.glucoseSlots;
+    const slots = (step&&step.wakeOnly) ? ['Fasting'] : CONFIG.glucoseSlots;
     slots.forEach(slot=>{
       // per-slot: a value input + a meal-relation select (before/after meal or snack). rel is
       // held per-slot so writing the value picks up whatever relation is currently chosen.
@@ -1044,27 +1043,20 @@ const Assess = {
     b.append(this.footer());
   },
   step_sleep(b){ const d=this.active.draft; d.sleep=d.sleep||{};
-    const tf=(lb,key)=>el('label',{class:'fld'}, el('div',{class:'lb'},lb),
-      el('input',{type:'time',value:d.sleep[key]||'',oninput:e=>{d.sleep[key]=e.target.value; this.deriveSleep(d);}}));
-    b.append(el('div',{class:'grid2'}, tf('Got in bed','inBed'), tf('Fell asleep','onset')));
-    b.append(tf('Woke up','wake'));
-    const out=el('div',{class:'muted',id:'sleepderive'});
-    b.append(out); this.deriveSleep(d);
+    // Simplified sleep capture (Eric): average hours across the past week + a subjective
+    // restfulness slider (higher = better). Replaces the in-bed/onset/wake time entry.
+    b.append(el('label',{class:'fld'}, el('div',{class:'lb'},'Average hours of sleep — past week'),
+      el('input',{type:'number',inputmode:'decimal',step:'0.5',min:'0',max:'16',placeholder:'e.g. 7',
+        value:d.sleep.avgHoursWeek!=null?d.sleep.avgHoursWeek:'',
+        oninput:e=>{ d.sleep.avgHoursWeek=e.target.value===''?null:clamp(+e.target.value,0,16); }})));
     const q=CONFIG.sliders.find(s=>s.key==='sleepQuality');
-    b.append(makeSlider(q, d.sliders.sleepQuality, v=>d.sliders.sleepQuality=v));
+    b.append(makeSlider({...q,label:'Restfulness — how rested you feel (higher = more rested)'}, d.sliders.sleepQuality, v=>d.sliders.sleepQuality=v));
     // morning: nicotine framed as overnight use (same 4-interval scale)
     if(this.active.variant==='am'){
       const nic=CONFIG.sliders.find(s=>s.key==='nicotine');
       b.append(makeSlider({...nic,label:'Did you use nicotine in the night / last night?'}, d.sliders.nicotine, v=>d.sliders.nicotine=v));
     }
     b.append(this.footer());
-  },
-  deriveSleep(d){ const s=d.sleep; const out=$('#sleepderive');
-    if(s.onset&&s.wake){ const [oh,om]=s.onset.split(':').map(Number),[wh,wm]=s.wake.split(':').map(Number);
-      let mins=(wh*60+wm)-(oh*60+om); if(mins<0)mins+=1440; s.totalSleepMin=mins;
-      if(s.inBed){ const [bh,bm]=s.inBed.split(':').map(Number); let tib=(wh*60+wm)-(bh*60+bm); if(tib<0)tib+=1440; s.timeInBedMin=tib; s.efficiency=tib?Math.round(mins/tib*100):null; }
-      if(out) out.textContent=`Total sleep: ${(mins/60).toFixed(1)}h`+(s.efficiency?` · efficiency ${s.efficiency}%`:''); }
-    else if(out) out.textContent='';
   },
   tensePhrase(){ const a=this.active; if(!a)return 'today'; if(a.cadence==='quick')return 'right now'; if(a.variant==='am')return 'this morning'; return 'overall today'; },
   step_sliders(b, step){ const d=this.active.draft; const tense=this.tensePhrase();
@@ -1585,12 +1577,12 @@ const IVIGLog={ open(){ const scrim=el('div',{class:'scrim'}); const close=()=>s
 const MoodLog={ openWake(forTs){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
   const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'Morning mood'+(forTs?' · '+fmtD(forTs):'')));
   let val=5; dlg.append(makeSlider({key:'moodWake',label:'How do you feel on waking? (terrible → amazing)'},5,v=>val=v));
-  const gv=el('input',{type:'number',inputmode:'numeric',placeholder:'wake glucose (optional)'});
-  dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Wake glucose'),gv));
+  const gv=el('input',{type:'number',inputmode:'numeric',placeholder:'fasting glucose (optional)'});
+  dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Fasting glucose'),gv));
   dlg.append(el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Cancel'),
     el('button',{class:'btn primary',onclick:()=>{ const ts=forTs||Date.now();
       D().moodLogs.push({type:'wake',ts,value:val});
-      if(gv.value) D().vitals.push({type:'glucose',ts,value:+gv.value,slot:'Wake'});
+      if(gv.value) D().vitals.push({type:'glucose',ts,value:+gv.value,slot:'Fasting'});
       Store.saveNow(); close(); toast('Morning mood logged 🌅'); render(); }},'Save')));
   scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim); } };
 function isWeeklyDue(){ const last=[...D().assessments].reverse().find(a=>a.cadence==='weekly');
@@ -1695,8 +1687,8 @@ const Insights = {
           v.mealSkip=Stats.mean(meal.map(m=>m.consistency==='skip'?(m.skipIntent==='intentional'?0.3:-1):0)); }
       }
       // sleep
-      const sl=list.map(a=>a.sleep).filter(s=>s&&s.totalSleepMin!=null);
-      if(sl.length){ v.sleepMin=Stats.mean(sl.map(s=>s.totalSleepMin)); v.sleepEff=Stats.mean(sl.map(s=>s.efficiency||0)); }
+      const sl=list.map(a=>a.sleep).filter(s=>s&&s.avgHoursWeek!=null);
+      if(sl.length){ v.sleepHours=Stats.mean(sl.map(s=>s.avgHoursWeek)); }
       // vitals (from assessment + standalone)
       const gl=[]; list.forEach(a=>(a.glucose||[]).forEach(g=>gl.push(g.value)));
       D().vitals.filter(x=>x.type==='glucose'&&dayKey(x.ts)===k).forEach(g=>gl.push(g.value));
@@ -1758,10 +1750,12 @@ const Insights = {
     V.mealsSkipped={label:'Meals skipped',kind:'predictor'}; V.mealsSkipUnintent={label:'Unintentional meal skips',kind:'predictor'};
     V.mealSkip={label:'Meal consistency (signed)',kind:'predictor'};
     ['breakfast','lunch','dinner'].forEach(mk=>{ V[mk+'_ate']={label:mk.charAt(0).toUpperCase()+mk.slice(1)+' eaten',kind:'predictor'}; V[mk+'_skipUnintent']={label:mk.charAt(0).toUpperCase()+mk.slice(1)+' skipped (unintentional)',kind:'predictor'}; });
-    V.sleepMin={label:'Total sleep time',kind:'predictor'}; V.sleepEff={label:'Sleep efficiency',kind:'predictor'};
-    V.glucoseMean={label:'Glucose (mean)',kind:'predictor'}; V.glucoseVar={label:'Glucose variability',kind:'predictor'};
-    V.glucoseStability={label:'Glucose stability % (day)',kind:'predictor'}; V.glucoseSpike={label:'Glucose spike (daily max)',kind:'predictor'};
-    V.glucoseTrough={label:'Glucose trough (daily min)',kind:'predictor'}; V.glucoseRange={label:'Glucose swing (max−min)',kind:'predictor'};
+    V.sleepHours={label:'Sleep hours (past-week avg)',kind:'predictor'};
+    // glucose = 'metric' kind: usable as BOTH predictor (glucose → symptoms) and outcome
+    // (meal eaten/skipped → blood sugar + stability), like the symptom sliders.
+    V.glucoseMean={label:'Glucose (mean)',kind:'metric'}; V.glucoseVar={label:'Glucose variability',kind:'metric'};
+    V.glucoseStability={label:'Glucose stability % (day)',kind:'metric'}; V.glucoseSpike={label:'Glucose spike (daily max)',kind:'metric'};
+    V.glucoseTrough={label:'Glucose trough (daily min)',kind:'metric'}; V.glucoseRange={label:'Glucose swing (max−min)',kind:'metric'};
     V.daysSinceIVIG={label:'Days since IVIG',kind:'predictor'};
     V.ivig_effect={label:'IVIG effect on board (PK)',kind:'predictor'};
     V.ivig_acute={label:'IVIG acute effect (first days)',kind:'predictor'};
@@ -1796,7 +1790,7 @@ const Insights = {
     if(nDays<5||spanDays<7) return {locked:true, nDays, spanDays:Math.round(spanDays)};
     const V=this.vars();
     const keys=Object.keys(V);
-    const outcomes=keys.filter(k=>V[k].kind==='symptom'||V[k].kind==='objective');
+    const outcomes=keys.filter(k=>V[k].kind==='symptom'||V[k].kind==='objective'||V[k].kind==='metric');
     const predictors=keys.filter(k=>V[k].kind!=='objective');
     const lags=[0,1,2,3,7]; // acute (same/next-day) → subacute/chronic (up to a week later)
     const series=k=>vecs.map(v=>v[k]==null?null:+v[k]);
@@ -1877,7 +1871,7 @@ const Insights = {
       const evening=list.some(a=>(a.cadence==='daily'||a.cadence==='weekly')&&(a.variant==='pm'||a.variant==null));
       const md=(D().mealDays||{})[dk]; const meals=md&&['breakfast','lunch','dinner'].every(m=>md[m]!=null);
       const glucose=list.some(a=>(a.glucose||[]).length)||D().vitals.some(x=>x.type==='glucose'&&dayKey(x.ts)===dk);
-      const sleep=list.some(a=>a.sleep&&a.sleep.totalSleepMin!=null);
+      const sleep=list.some(a=>a.sleep&&a.sleep.avgHoursWeek!=null);
       if(morning&&evening&&meals&&glucose&&sleep) ct++;
     });
     return ct;
@@ -1888,7 +1882,7 @@ const Insights = {
     const exposures=Object.keys(V).filter(k=> k.startsWith('cogmed_') || (k.startsWith('ep_')&&k.endsWith('_active'))
       || (k.startsWith('rx_')&&k.endsWith('_active')) || k==='nicotine' || (k.startsWith('med_')&&k.endsWith('_change')))
       .filter(k=>vecs.some(v=>v[k]!=null));
-    const outs=['agitation','anxiety','sleepMin','sleepQuality','brainFog','fatigue','pem','cogFatigue','iceBrain','depression','overstim']
+    const outs=['agitation','anxiety','sleepHours','sleepQuality','brainFog','fatigue','pem','cogFatigue','iceBrain','depression','overstim']
       .filter(k=>V[k]&&vecs.some(v=>v[k]!=null));
     const mean=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
     // binarize an exposure: counts/binary flags at >0, graded values at their median
@@ -1925,7 +1919,7 @@ const Insights = {
   // must exist as findings. Reported as a candidate pathway, honestly not proven causation.
   findPathways(list, V){
     const byPair={}; list.forEach(f=>{ byPair[f.pk+'>'+f.ok]=f; });
-    const mediators=['sleepQuality','sleepMin','fatigue','cogFatigue','pem','brainFog','agitation','overstim','anxiety']
+    const mediators=['sleepQuality','sleepHours','fatigue','cogFatigue','pem','brainFog','agitation','overstim','anxiety']
       .filter(k=>V[k]);
     const out=[];
     list.forEach(xm=>{ const X=xm.pk, M=xm.ok; if(!mediators.includes(M)||X===M) return;
@@ -2050,9 +2044,9 @@ const Dev = {
           maritalStress:base(3+Math.random()*2), socializing:base(3+Math.random()*4), nicotine:base(1+Math.random()*2)%4+1,
           moodEnd:base(7-inflam*0.5+Math.random()*2), moodWake:base(6-inflam*0.4+Math.random()*2) },
         exertion:{ mental:base(4+Math.random()*4), physical:base(3+Math.random()*4) },
-        sleep:{ totalSleepMin:Math.round(360+Math.random()*140-inflam*15), efficiency:Math.round(80-inflam*3+Math.random()*10) },
+        sleep:{ avgHoursWeek:Math.round((7.5-inflam*0.3+Math.random()*1.5)*2)/2 },
         meals:{ count:['2','3','3+'][Math.floor(Math.random()*3)], quality:base(6-inflam*0.3), consistency: Math.random()<0.2?'skip':'normal', skipIntent: Math.random()<0.5?'intentional':'unintended' },
-        meds:[], glucose:[{slot:'Wake',value:Math.round(88+Math.random()*20),ts},{slot:'Noon',value:Math.round(100+Math.random()*40+inflam*4),ts},{slot:'8pm',value:Math.round(95+Math.random()*30),ts}], bp:null,
+        meds:[], glucose:[{slot:'Fasting',value:Math.round(88+Math.random()*20),ts},{slot:'Post-lunch',value:Math.round(100+Math.random()*40+inflam*4),ts},{slot:'Post-dinner',value:Math.round(95+Math.random()*30),ts}], bp:null,
         selfCare:[ ...(Math.random()<0.4?['Meditated']:[]), ...(Math.random()<0.2?['Cold plunge']:[]), ...(Math.random()<0.3?['Designated resting']:[]), ...(inflam>3&&Math.random()<0.6?['Nap x1']:[]), ...(Math.random()<0.3?['Recreational activities']:[]) ], notes:'' };
       if((nDays-day)%14===0) a.meds.push({medId:'ivig',dose:'Infusion',ts,deviation:'added',purpose:'Immunomodulation'});
       // Concerta streak: taken days 30..26 then STOPPED — models a rebound-PEM scenario
@@ -2488,8 +2482,8 @@ function renderAssessmentDetail(v, id){
   CONFIG.sliders.forEach(s=>{ if(a.sliders[s.key]==null)return; sc.append(el('div',{class:'row',style:'padding:3px 0'},
     el('span',{style:'flex:1;font-size:13px'},s.label), el('b',{style:'color:var(--cyan)'},a.sliders[s.key]))); });
   v.append(sc);
-  if(a.sleep&&a.sleep.totalSleepMin) v.append(el('div',{class:'card'},el('h3',{style:'margin-top:0'},'Sleep'),
-    el('p',{class:'muted'},(a.sleep.totalSleepMin/60).toFixed(1)+'h sleep'+(a.sleep.efficiency?' · '+a.sleep.efficiency+'% efficiency':''))));
+  if(a.sleep&&(a.sleep.avgHoursWeek!=null||a.sleep.totalSleepMin)) v.append(el('div',{class:'card'},el('h3',{style:'margin-top:0'},'Sleep'),
+    el('p',{class:'muted'}, a.sleep.avgHoursWeek!=null ? (a.sleep.avgHoursWeek+'h/night (past-week avg)') : ((a.sleep.totalSleepMin/60).toFixed(1)+'h sleep'+(a.sleep.efficiency?' · '+a.sleep.efficiency+'% efficiency':'')))));
   if(a.objective){ v.append(objCard(a.objective));
     if(a.medContext&&a.medContext.length){ const mc=el('div',{class:'card'}); mc.append(el('h3',{style:'margin-top:0'},'Meds on board at test'));
       a.medContext.forEach(c=>mc.append(el('div',{class:'row',style:'padding:3px 0'},
@@ -2917,14 +2911,14 @@ const Export={
   csv(range){ const now=Date.now(); const cut={week:7,month:30,year:365,all:1e9}[range]*DAY;
     const rows=D().assessments.filter(a=>now-a.ts<=cut).sort((a,b)=>a.ts-b.ts);
     const sk=CONFIG.sliders.map(s=>s.key);
-    const head=['date','time','cadence',...sk,'mentalExert','physicalExert','sleepMin','sleepEff','mealCount','mealQuality','daysSinceIVIG','qol','cog','nii','obj_procSpeed','obj_rtVar','dass_dep','dass_anx','dass_stress','notes'];
+    const head=['date','time','cadence',...sk,'mentalExert','physicalExert','sleepHoursAvg','mealCount','mealQuality','daysSinceIVIG','qol','cog','nii','obj_procSpeed','obj_rtVar','dass_dep','dass_anx','dass_stress','notes'];
     const scores=Score.seriesAll(); const nii=Neuro.series();
     const esc=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
     const lines=[head.join(',')];
     rows.forEach(a=>{ const sc=scores.find(x=>x.id===a.id)||{}; const nv=nii.find(x=>x.id===a.id)||{};
       const q=a.questionnaires||{};
       lines.push([dayKey(a.ts),fmtT(a.ts),a.cadence,...sk.map(k=>a.sliders[k]==null?'':a.sliders[k]),
-        a.exertion&&a.exertion.mental,a.exertion&&a.exertion.physical,a.sleep&&a.sleep.totalSleepMin,a.sleep&&a.sleep.efficiency,
+        a.exertion&&a.exertion.mental,a.exertion&&a.exertion.physical,a.sleep&&a.sleep.avgHoursWeek,
         a.meals&&a.meals.count,a.meals&&a.meals.quality,Derive.daysSinceIVIG(a.ts),
         sc.qol!=null?Math.round(sc.qol):'',sc.cog!=null?Math.round(sc.cog):'',nv.nii!=null?Math.round(nv.nii):'',
         a.objective&&Math.round(a.objective.obj_processingSpeed),a.objective&&Math.round(a.objective.obj_rtVariability),
