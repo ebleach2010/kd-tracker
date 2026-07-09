@@ -1,0 +1,1897 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#07070d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NeuroTrack">
+<link rel="manifest" href="manifest.webmanifest">
+<title>NeuroTrack</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='40' fill='%2307070d'/%3E%3Ccircle cx='90' cy='90' r='52' fill='none' stroke='%23ff4d9d' stroke-width='7'/%3E%3Ccircle cx='90' cy='90' r='32' fill='none' stroke='%2322e3ff' stroke-width='7'/%3E%3Ccircle cx='90' cy='90' r='12' fill='%233dff9a'/%3E%3C/svg%3E">
+<style>
+/* ===================================================================
+   NeuroTrack — neon dark theme. All styling lives in this real <style>
+   block (NOT a JS template literal), so backticks/${} are safe here.
+   =================================================================== */
+:root{
+  --bg:#07070d; --bg2:#0d0d18; --panel:#12121f; --panel2:#181828;
+  --line:#23233a; --line2:#2e2e48;
+  --ink:#eef0ff; --ink2:#aab0d6; --ink3:#6f76a3;
+  --cyan:#22e3ff; --pink:#ff4d9d; --green:#3dff9a; --blue:#4d9dff;
+  --purple:#b06bff; --amber:#ffcf5c; --red:#ff5c6b;
+  --qol:#4d9dff; --cog:#3dff9a; --nii:#ff4d9d;
+  --radius:16px; --tap:44px;
+  --safe-t:env(safe-area-inset-top); --safe-b:env(safe-area-inset-bottom);
+  font-size:16px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{margin:0; padding:0; height:100%; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased; overscroll-behavior:none}
+body{background:
+  radial-gradient(1200px 500px at 80% -10%, rgba(176,107,255,.10), transparent 60%),
+  radial-gradient(900px 500px at -10% 10%, rgba(34,227,255,.08), transparent 55%),
+  var(--bg)}
+button,input,select,textarea{font:inherit; color:inherit}
+button{cursor:pointer; border:none; background:none}
+a{color:var(--cyan); text-decoration:none}
+::-webkit-scrollbar{width:0;height:0}
+
+#app{max-width:720px; margin:0 auto; min-height:100%; display:flex; flex-direction:column}
+#view{flex:1; padding:calc(var(--safe-t) + 8px) 16px 96px; -webkit-overflow-scrolling:touch}
+
+/* header */
+.hdr{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:6px 0 14px}
+.hdr h1{font-size:20px; letter-spacing:.3px; margin:0; font-weight:700}
+.hdr .sub{color:var(--ink3); font-size:12px; margin-top:2px}
+.brandmark{width:30px;height:30px;border-radius:9px;flex:0 0 auto;
+  background:conic-gradient(from 210deg,var(--nii),var(--purple),var(--cyan),var(--green),var(--nii));
+  box-shadow:0 0 18px rgba(176,107,255,.55); position:relative}
+.brandmark::after{content:"";position:absolute;inset:5px;border-radius:5px;background:var(--bg2)}
+
+/* tab bar */
+.tabbar{position:fixed; left:0; right:0; bottom:0; z-index:40;
+  padding:6px 8px calc(var(--safe-b) + 6px); background:rgba(10,10,20,.86);
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  border-top:1px solid var(--line); display:flex; gap:2px; justify-content:space-around;
+  max-width:720px; margin:0 auto}
+.tabbar button{flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:6px 2px; border-radius:12px; color:var(--ink3); font-size:9.5px; font-weight:600; letter-spacing:.2px}
+.tabbar button .ic{font-size:19px; line-height:1}
+.tabbar button.on{color:var(--cyan)}
+.tabbar button.on .ic{filter:drop-shadow(0 0 8px var(--cyan))}
+
+/* panels & cards */
+.card{background:linear-gradient(180deg,var(--panel),var(--panel2)); border:1px solid var(--line);
+  border-radius:var(--radius); padding:16px; margin:0 0 14px}
+.card h2{font-size:15px; margin:0 0 4px; font-weight:700}
+.card h3{font-size:13px; margin:14px 0 8px; font-weight:700; color:var(--ink2)}
+.muted{color:var(--ink3); font-size:12.5px; line-height:1.5}
+.row{display:flex; align-items:center; gap:10px}
+.row.wrap{flex-wrap:wrap}
+.spacer{flex:1}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.pill{display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px;
+  border:1px solid var(--line2); background:var(--panel); font-size:12px; color:var(--ink2)}
+
+/* buttons */
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:var(--tap);
+  padding:11px 16px; border-radius:13px; font-weight:700; font-size:14.5px;
+  background:var(--panel2); border:1px solid var(--line2); color:var(--ink)}
+.btn.primary{background:linear-gradient(180deg,rgba(34,227,255,.22),rgba(77,157,255,.14));
+  border-color:rgba(34,227,255,.5); color:#eafcff; box-shadow:0 0 22px rgba(34,227,255,.22)}
+.btn.pink{background:linear-gradient(180deg,rgba(255,77,157,.22),rgba(176,107,255,.14));
+  border-color:rgba(255,77,157,.5); color:#ffeaf4; box-shadow:0 0 22px rgba(255,77,157,.2)}
+.btn.ghost{background:transparent}
+.btn.sm{min-height:34px; padding:7px 12px; font-size:13px; border-radius:10px}
+.btn.block{width:100%}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.4}
+
+/* forms */
+label.fld{display:block; margin:0 0 12px}
+label.fld .lb{font-size:12.5px; color:var(--ink2); margin-bottom:6px; font-weight:600}
+input[type=text],input[type=number],input[type=time],input[type=date],select,textarea{
+  width:100%; background:var(--bg2); border:1px solid var(--line2); border-radius:11px;
+  padding:11px 12px; color:var(--ink); font-size:15px}
+textarea{min-height:90px; resize:vertical}
+select{appearance:none; -webkit-appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 18px,calc(100% - 13px) 18px; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+input:focus,select:focus,textarea:focus{outline:none; border-color:var(--cyan); box-shadow:0 0 0 3px rgba(34,227,255,.15)}
+
+/* slider component */
+.slider{margin:0 0 20px; padding:12px 12px 6px; background:var(--bg2); border:1px solid var(--line); border-radius:14px}
+.slider .top{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px}
+.slider .name{font-weight:700; font-size:14px}
+.slider .val{font-weight:800; font-size:18px; color:var(--cyan); text-shadow:0 0 12px rgba(34,227,255,.5)}
+.slider input[type=range]{width:100%; -webkit-appearance:none; appearance:none; height:6px; border-radius:6px;
+  background:linear-gradient(90deg,var(--green),var(--amber),var(--red)); margin:6px 0}
+.slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:26px; height:26px; border-radius:50%;
+  background:#fff; border:3px solid var(--cyan); box-shadow:0 0 14px rgba(34,227,255,.7); cursor:pointer}
+.slider .desc{font-size:12px; color:var(--ink2); min-height:32px; line-height:1.4; margin-top:2px}
+.slider .ticks{display:flex; justify-content:space-between; font-size:9px; color:var(--ink3); margin-top:2px}
+
+/* banners */
+.banner{display:flex; align-items:center; gap:12px; padding:13px 15px; border-radius:14px; margin:0 0 12px;
+  border:1px solid var(--line2); background:var(--panel)}
+.banner.due{border-color:rgba(255,207,92,.5); background:linear-gradient(180deg,rgba(255,207,92,.12),transparent)}
+.banner.pink{border-color:rgba(255,77,157,.5); background:linear-gradient(180deg,rgba(255,77,157,.1),transparent)}
+.banner .bic{font-size:22px}
+.banner .bt{flex:1}
+.banner .bt b{display:block; font-size:14px}
+.banner .bt span{font-size:12px; color:var(--ink3)}
+
+/* toggles */
+.tgl{display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:13px;
+  border:1px solid var(--line2); background:var(--bg2); margin:0 0 10px}
+.tgl .sw{width:52px; height:30px; border-radius:999px; background:var(--line2); position:relative; flex:0 0 auto; transition:.18s}
+.tgl .sw::after{content:""; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; transition:.18s}
+.tgl.on .sw{background:var(--green); box-shadow:0 0 16px rgba(61,255,154,.5)}
+.tgl.on .sw::after{transform:translateX(22px)}
+.tgl .tinfo{flex:1}
+.tgl .tinfo b{font-size:14px; display:block}
+.tgl .tinfo span{font-size:11.5px; color:var(--ink3)}
+
+/* dialog */
+.scrim{position:fixed; inset:0; z-index:80; background:rgba(3,3,8,.72); backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center; padding:24px}
+.dlg{width:100%; max-width:400px; background:var(--panel2); border:1px solid var(--line2); border-radius:18px; padding:20px}
+.dlg h3{margin:0 0 8px; font-size:16px}
+.dlg .acts{display:flex; gap:10px; margin-top:18px}
+.dlg .acts .btn{flex:1}
+
+/* chips / seg */
+.seg{display:inline-flex; background:var(--bg2); border:1px solid var(--line2); border-radius:12px; padding:3px; gap:2px; flex-wrap:wrap}
+.seg button{padding:7px 13px; border-radius:9px; font-size:13px; font-weight:600; color:var(--ink3)}
+.seg button.on{background:var(--panel); color:var(--ink); box-shadow:0 0 0 1px var(--line2)}
+
+.empty{text-align:center; color:var(--ink3); padding:40px 16px; font-size:13.5px; line-height:1.6}
+.tag{font-size:10px; font-weight:700; padding:2px 7px; border-radius:6px; letter-spacing:.4px; text-transform:uppercase}
+.tag.daily{background:rgba(77,157,255,.16); color:var(--blue)}
+.tag.weekly{background:rgba(176,107,255,.16); color:var(--purple)}
+hr.sep{border:none; border-top:1px solid var(--line); margin:14px 0}
+.kbd{font-family:ui-monospace,Menlo,monospace; font-size:11px; background:var(--bg2); padding:1px 6px; border-radius:5px; border:1px solid var(--line2); color:var(--ink2)}
+.fade{animation:fade .25s ease}
+@keyframes fade{from{opacity:0; transform:translateY(4px)}to{opacity:1; transform:none}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="view"></div>
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
+
+<script>
+/* ==========================================================================
+   NeuroTrack — personal neurological-function tracker (post-AE).
+   Single self-contained HTML file. Vanilla JS, no build, no backend.
+   All data lives on-device in localStorage under key "neuro_v1".
+
+   ─── MAINTENANCE / MODEL CARD (read me when re-tuning with a future model) ──
+   The app does NOT call any AI at runtime. To improve it, hand this file
+   (and/or an exported CSV/JSON) to a new Claude session with a prompt like:
+   "Re-tune the correlation PRIORS, neuro-index WEIGHTS, prediction
+    calculators and the confidence mapping against my exported data and the
+    latest literature; keep the data SCHEMA and UI stable; explain every
+    change." The tunable knobs are all named constants, not buried:
+      • CONFIG.sliders / CONFIG.sliderDesc      — subjective items + descriptors
+      • CONFIG.neuroWeights                     — neuroinflammation index loadings
+      • CONFIG.scoreMap                          — QOL / Cognitive mapping + weights
+      • CONFIG.priors                            — literature priors for correlations
+      • Stats.confidence()                       — 25–100% confidence formula
+      • Neuro.compute() / Score.compute()        — index math
+      • SOURCES                                  — citations shown in the Sources tab
+   The Neuroinflammation Index is a SYMPTOM-DERIVED PROXY, not a biomarker.
+   ========================================================================== */
+
+/* ---------- tiny DOM helpers ---------- */
+const $ = (s,r=document)=>r.querySelector(s);
+const el=(tag,props={},...kids)=>{
+  const n=document.createElement(tag);
+  for(const k in props){
+    if(k==='class') n.className=props[k];
+    else if(k==='html') n.innerHTML=props[k];
+    else if(k==='style') n.setAttribute('style',props[k]);
+    else if(k.startsWith('on')&&typeof props[k]==='function') n.addEventListener(k.slice(2),props[k]);
+    else if(props[k]!=null&&props[k]!==false) n.setAttribute(k,props[k]);
+  }
+  for(let kid of kids.flat()){ if(kid==null||kid===false)continue; n.append(kid.nodeType?kid:document.createTextNode(kid)); }
+  return n;
+};
+const fmtT=ts=>new Date(ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+const fmtD=ts=>new Date(ts).toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'});
+const fmtDT=ts=>fmtD(ts)+' · '+fmtT(ts);
+const dayKey=ts=>{const d=new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+const uid=()=>Date.now().toString(36)+Math.floor(Math.random()*1e6).toString(36);
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const DAY=86400000;
+
+/* ==========================================================================
+   CONFIG — defaults & tunable knobs (see maintenance note above)
+   ========================================================================== */
+const CONFIG = {
+  // subjective sliders: {key,label,range,inflaKey?}. range 10 unless noted.
+  sliders:[
+    {key:'depression',label:'Depression'},
+    {key:'anxiety',label:'Anxiety'},
+    {key:'overstim',label:'Overstimulation'},
+    {key:'fatigue',label:'Fatigue'},
+    {key:'sleepQuality',label:'Sleep quality (last night)'},
+    {key:'cogFatigue',label:'Cognitive fatigue'},
+    {key:'brainFog',label:'Brain fog'},
+    {key:'visualDistortion',label:'Visual distortion vs baseline'},
+    {key:'emotEngagement',label:'Emotional engagement'},
+    {key:'emotStressors',label:'Emotional stressors'},
+    {key:'envStressors',label:'Environmental stressors'},
+    {key:'generalStress',label:'General stress'},
+    {key:'maritalStress',label:'Marital relationship stress'},
+    {key:'socializing',label:'Socializing amount'},
+    {key:'rumination',label:'Rumination'},
+    {key:'iceBrain',label:'Ice Brain (cold-brain feeling)'},
+    {key:'pem',label:'PEM severity (post-exertional)'},
+    {key:'nicotine',label:'Nicotine intake',range:4},
+  ],
+  // exertion captured pre-assessment
+  exertion:[{key:'mental',label:'Mental exertion today'},{key:'physical',label:'Physical exertion today'}],
+  // per-notch practical descriptors. sliderDesc[key] = array indexed by value.
+  // For 1–10 items index 1..10 used; index0 unused. Filled by buildDesc().
+  sliderDesc:{},
+  glucoseSlots:['Wake','Noon','4pm','8pm','Bedtime'],
+  // meds are in mg unless unit overridden. Logging: enter mg (0 = skipped), and a
+  // change-type defaulting to "acute" (acute change/timing) vs "chronic" (daily-regimen change).
+  defaultMeds:[
+    {id:'caffeine',name:'Caffeine',unit:'mg',doses:[50,100,200],purpose:'Executive function',baseline:false},
+    {id:'concerta',name:'Concerta',unit:'mg',doses:[18,27,36,54],purpose:'Executive function',baseline:false},
+    {id:'hydromorphone',name:'Hydromorphone',unit:'mg',doses:[1,2,4,8],purpose:'Pain',baseline:true,baselineDose:2},
+    {id:'ivig',name:'IVIG',unit:'',doses:['Infusion'],purpose:'Immunomodulation',baseline:false},
+  ],
+  changeTypes:['Acute change or timing','Chronic change in daily medication'],
+  defaultSupps:[
+    {id:'neuromag',name:'Neuro-Mag (magnesium)',doses:['1 scoop','2 scoop'],baseline:true},
+    {id:'taurine',name:'Taurine',doses:['500mg','1g','2g'],baseline:true},
+    {id:'vitd',name:'Vitamin D',doses:['1000IU','2000IU','5000IU'],baseline:true},
+    {id:'mel300',name:'Melatonin 300mcg XR',doses:['300mcg'],baseline:true},
+    {id:'mel15',name:'Melatonin 1.5mg XR',doses:['1.5mg'],baseline:false},
+  ],
+  defaultToggles:[
+    {id:'illness',label:'Actively sick',color:'#ff5c6b'},
+    {id:'childcare',label:'Child caretaking',color:'#ffcf5c'},
+    {id:'pem',label:'PEM crash',color:'#b06bff'},
+  ],
+  defaultEvents:['Relapse','Hospital stay','Major dissociative episode','PTSD flashback','Death in the family','Move'],
+  defaultSelfCare:['Meditated','Cold plunge','Nap x1','Nap x2','Nap x3','Designated resting','Recreational activities'],
+  // neuroinflammation index loadings (orientation: +1 higher=more inflam, -1 reverse)
+  neuroWeights:{
+    fatigue:{w:1.0,o:1}, cogFatigue:{w:1.0,o:1}, brainFog:{w:1.0,o:1},
+    sleepQuality:{w:.8,o:-1}, emotEngagement:{w:.9,o:-1}, pem:{w:.7,o:1},
+    depression:{w:.8,o:1}, overstim:{w:.5,o:1}, iceBrain:{w:.2,o:1,flag:'experimental'},
+    rumination:{w:.2,o:1}, anxiety:{w:.2,o:1}, visualDistortion:{w:.3,o:1},
+    // objective (weekly) — reverse where higher=better performance
+    obj_processingSpeed:{w:1.0,o:1}, obj_rtVariability:{w:.9,o:1},
+    obj_workingMemory:{w:.6,o:1}, obj_attention:{w:.6,o:1}, obj_recall:{w:.4,o:1},
+  },
+  // QOL / Cognitive mapping. target: 'qol'|'cog'|'both'. o: orientation for burden.
+  scoreMap:{
+    depression:{t:'both',w:1.0}, anxiety:{t:'qol',w:.8}, generalStress:{t:'qol',w:.7},
+    maritalStress:{t:'qol',w:.5}, emotStressors:{t:'qol',w:.5}, envStressors:{t:'qol',w:.4},
+    fatigue:{t:'qol',w:.9}, sleepQuality:{t:'qol',w:.8,o:-1}, pem:{t:'qol',w:.7},
+    socializing:{t:'qol',w:.3,o:-1}, emotEngagement:{t:'qol',w:.5,o:-1}, overstim:{t:'qol',w:.4},
+    cogFatigue:{t:'cog',w:.9}, brainFog:{t:'cog',w:.9}, visualDistortion:{t:'cog',w:.5},
+    iceBrain:{t:'both',w:.3}, rumination:{t:'qol',w:.3},
+    // Overall mood carries strong QOL weight (external factors can make an "okay day"
+    // even when cognition/inflammation are poor) but little cognitive weight.
+    moodEnd:{t:'qol',w:1.2,o:-1}, moodWake:{t:'qol',w:.6,o:-1},
+  },
+  // literature priors for correlations: {a,b, r0 (expected), k0 (pseudo-count)}
+  priors:[
+    {a:'fatigue',b:'nii',r0:.6,k0:8}, {a:'sleepQuality',b:'brainFog',r0:-.4,k0:6},
+    {a:'daysSinceIVIG',b:'nii',r0:.4,k0:6}, {a:'physical',b:'pem',r0:.4,k0:6},
+    {a:'depression',b:'cogFatigue',r0:.4,k0:5}, {a:'sleepQuality',b:'cogFatigue',r0:-.4,k0:5},
+  ],
+};
+function buildDesc(){
+  // Generic 1–10 anchor descriptors, overridden per-item where meaningful.
+  const g=(one,mid,ten)=>{const a=Array(11).fill('');a[1]=one;a[5]=mid;a[10]=ten;return a;};
+  const D=CONFIG.sliderDesc;
+  D.cogFatigue=(()=>{const a=Array(11).fill('');
+    a[1]='Excellent cognitive performance, at/near healthy baseline';
+    a[3]='Slight mental tiredness after long focus';
+    a[5]='Average performance; significant fatigue after a task or an hour of focus';
+    a[7]='Fogging fast; short tasks drain me';
+    a[10]='Cannot sustain any focused thought'; return a;})();
+  D.fatigue=g('Fully energized','Notably tired, pushing through','Bedbound-level exhaustion');
+  D.brainFog=g('Crystal clear thinking','Cloudy, word-finding slips','Thick fog, cannot form thoughts');
+  D.depression=g('Bright, hopeful mood','Low but functioning','Severe, unable to feel anything good');
+  D.anxiety=g('Calm and settled','Noticeable worry/tension','Panic-level, overwhelming');
+  D.overstim=g('Comfortable with input','Sounds/lights starting to grate','Sensory overload, need to flee');
+  D.sleepQuality=g('Deep, fully restorative','Broken but okay','No real sleep / unrefreshing');
+  D.visualDistortion=g('Vision normal vs baseline','Mild shimmer/afterimages','Severe distortion, hard to see');
+  D.emotEngagement=g('Fully present with people','Somewhat flat','Completely numb/detached');
+  D.emotStressors=g('None weighing on me','A few nagging worries','Crushing emotional load');
+  D.envStressors=g('Calm environment','Some chaos/demands','Overwhelming environment');
+  D.generalStress=g('Totally relaxed','Moderate ongoing stress','Maxed-out stress');
+  D.maritalStress=g('Connected, at ease','Some friction','Severe relationship strain');
+  D.socializing=g('No social contact','A moderate amount','Constant intense socializing');
+  D.rumination=g('Mind quiet','Looping on some things','Trapped in relentless loops');
+  D.iceBrain=g('No cold-brain sensation','Noticeable cold feeling','Intense freezing-brain feeling');
+  D.pem=g('No crash','Moderate post-exertional crash','Total crash, wiped out for days');
+  D.nicotine=(()=>{const a=Array(5).fill('');a[1]='None';a[2]='Light';a[3]='Moderate';a[4]='Heavy';return a;})();
+  const mood=(()=>{const a=Array(11).fill('');a[1]='Terrible day';a[2]='Very bad';a[3]='Rough';a[4]='Below average';a[5]='Okay day';a[6]='Decent';a[7]='Good day';a[8]='Really good';a[9]='Great';a[10]='Amazing day';return a;})();
+  D.moodEnd=mood; D.moodWake=mood.slice();
+  D.mental=g('No mental exertion','Moderate cognitive work','Extreme mental load');
+  D.physical=g('Sedentary','Moderate activity','Extreme physical exertion');
+}
+buildDesc();
+
+/* ==========================================================================
+   STORE — versioned localStorage
+   ========================================================================== */
+const Store = (()=>{
+  const KEY='neuro_v1';
+  const fresh=()=>({
+    schemaVersion:3,
+    settings:{ weeklyDow:4, weeklyHour:19, calibrateMin:20, remindersOn:true },
+    meds:JSON.parse(JSON.stringify(CONFIG.defaultMeds)),
+    supplements:JSON.parse(JSON.stringify(CONFIG.defaultSupps)),
+    toggleTypes:JSON.parse(JSON.stringify(CONFIG.defaultToggles)),
+    eventTypes:CONFIG.defaultEvents.slice(),
+    selfCareTypes:CONFIG.defaultSelfCare.slice(),
+    reminders:[
+      {id:'moodWake',kind:'Morning mood + wake glucose',schedule:'daily@08:00',on:true},
+      {id:'daily',kind:'End-of-day: mood + check-in + 8pm glucose',schedule:'daily@20:00',on:true},
+      {id:'weekly',kind:'Weekly full (Thu eve)',schedule:'weekly',on:true},
+      {id:'glucose',kind:'Glucose readings',schedule:'wake/noon/4pm/8pm/bed',on:true},
+      {id:'bp',kind:'Blood pressure',schedule:'daily',on:true},
+    ],
+    weights:{alpha:.25}, // subjective-attenuation strength
+    priors:JSON.parse(JSON.stringify(CONFIG.priors)),
+    assessments:[], medLogs:[], supplementLogs:[], vitals:[], moodLogs:[],
+    events:[], episodes:[],
+    literatureCache:null, prioReviewed:null,
+  });
+  let data;
+  try{ data=JSON.parse(localStorage.getItem(KEY)); }catch(e){ data=null; }
+  if(!data||!data.schemaVersion) data=fresh();
+  // forward-compatible normalization: fill any keys added in newer schema versions
+  const base=fresh();
+  for(const k in base){ if(data[k]==null) data[k]=base[k]; }
+  if(data.settings) for(const k in base.settings){ if(data.settings[k]==null) data.settings[k]=base.settings[k]; }
+  let saveT;
+  const save=()=>{ clearTimeout(saveT); saveT=setTimeout(()=>{
+    try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch(e){ console.warn('save failed',e); }
+  },120); };
+  const saveNow=()=>{ try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch(e){} };
+  return {
+    get d(){return data;},
+    save, saveNow, fresh,
+    reset(){ data=fresh(); saveNow(); },
+    load(obj){ data=obj; saveNow(); },
+  };
+})();
+const D=()=>Store.d;
+
+/* ==========================================================================
+   STATS — robust stats, correlations, confidence
+   ========================================================================== */
+const Stats = {
+  mean:a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:0,
+  median(a){ if(!a.length)return 0; const s=[...a].sort((x,y)=>x-y); const m=s.length>>1;
+    return s.length%2?s[m]:(s[m-1]+s[m])/2; },
+  mad(a){ if(!a.length)return 0; const md=this.median(a); return this.median(a.map(x=>Math.abs(x-md))); },
+  sd(a){ if(a.length<2)return 0; const m=this.mean(a); return Math.sqrt(a.reduce((s,x)=>s+(x-m)*(x-m),0)/(a.length-1)); },
+  percentile(a,p){ if(!a.length)return 0; const s=[...a].sort((x,y)=>x-y); const i=clamp(p/100*(s.length-1),0,s.length-1);
+    const lo=Math.floor(i),hi=Math.ceil(i); return s[lo]+(s[hi]-s[lo])*(i-lo); },
+  rank(a){ const idx=a.map((v,i)=>[v,i]).sort((x,y)=>x[0]-y[0]); const r=Array(a.length);
+    let i=0; while(i<idx.length){ let j=i; while(j+1<idx.length&&idx[j+1][0]===idx[i][0])j++;
+      const avg=(i+j)/2+1; for(let k=i;k<=j;k++)r[idx[k][1]]=avg; i=j+1; } return r; },
+  spearman(x,y){ // returns {r,n}
+    const pairs=[]; for(let i=0;i<x.length;i++) if(x[i]!=null&&y[i]!=null&&!isNaN(x[i])&&!isNaN(y[i])) pairs.push([x[i],y[i]]);
+    const n=pairs.length; if(n<4) return {r:0,n};
+    const rx=this.rank(pairs.map(p=>p[0])), ry=this.rank(pairs.map(p=>p[1]));
+    const mx=this.mean(rx),my=this.mean(ry); let num=0,dx=0,dy=0;
+    for(let i=0;i<n;i++){ num+=(rx[i]-mx)*(ry[i]-my); dx+=(rx[i]-mx)**2; dy+=(ry[i]-my)**2; }
+    const r=(dx&&dy)?num/Math.sqrt(dx*dy):0; return {r:clamp(r,-1,1),n};
+  },
+  // literature-shrunk estimate
+  shrink(rObs,n,prior){ if(!prior) return rObs; return (prior.k0*prior.r0 + n*rObs)/(prior.k0+n); },
+  // confidence 25–100 from |r|, n, reproducibility(0..1). <25 => returns 0 (suppress)
+  confidence(r,n,repro){
+    if(n<5) return 0;
+    const eff=Math.min(1,Math.abs(r)/0.6);           // effect size component
+    const se=1/Math.sqrt(Math.max(1,n-3));            // Fisher-z precision
+    const mass=Math.min(1,(Math.abs(r)/(se*1.96)));   // ~significance
+    const rep=clamp(repro==null?0.5:repro,0,1);
+    const raw=0.45*eff+0.35*Math.min(1,mass)+0.20*rep;
+    const pct=Math.round(raw*100);
+    return pct<25?0:clamp(pct,25,100);
+  },
+};
+
+/* ==========================================================================
+   ROUTER / VIEWS registry (views filled in by later sections)
+   ========================================================================== */
+const State = { tab:'home', sub:null };
+const Views = {}; // Views[tab] = (mount)=>{}
+const TABS=[
+  {id:'home', label:'Home', ic:'◎'},
+  {id:'trends', label:'Trends', ic:'📈'},
+  {id:'insights', label:'Insights', ic:'✦'},
+  {id:'history', label:'History', ic:'▦'},
+  {id:'events', label:'Events', ic:'✚'},
+  {id:'sources', label:'Sources', ic:'❋'},
+  {id:'settings', label:'Settings', ic:'⚙'},
+];
+function go(tab,sub){ State.tab=tab; State.sub=sub||null; render(); window.scrollTo(0,0); }
+function render(){
+  const v=$('#view'); v.innerHTML='';
+  v.className='fade';
+  (Views[State.tab]||Views.home)(v);
+  const tb=$('#tabbar'); tb.innerHTML='';
+  TABS.forEach(t=>tb.append(el('button',{class:State.tab===t.id?'on':'',onclick:()=>go(t.id)},
+    el('span',{class:'ic'},t.ic), el('span',{},t.label))));
+}
+
+/* confirm dialog helper (used for time edits etc.) */
+function confirmDlg(title,msg,onYes){
+  const scrim=el('div',{class:'scrim'});
+  const close=()=>scrim.remove();
+  scrim.append(el('div',{class:'dlg'},
+    el('h3',{},title),
+    msg?el('p',{class:'muted'},msg):null,
+    el('div',{class:'acts'},
+      el('button',{class:'btn ghost',onclick:close},'No'),
+      el('button',{class:'btn primary',onclick:()=>{close(); onYes();}},'Yes, save'))));
+  scrim.addEventListener('click',e=>{ if(e.target===scrim) close(); });
+  document.body.append(scrim);
+}
+function toast(msg){
+  const t=el('div',{style:'position:fixed;left:50%;bottom:calc(var(--safe-b) + 78px);transform:translateX(-50%);z-index:90;background:var(--panel2);border:1px solid var(--line2);padding:11px 16px;border-radius:12px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.5)'},msg);
+  document.body.append(t); setTimeout(()=>{t.style.opacity='0';t.style.transition='.3s';setTimeout(()=>t.remove(),300);},1600);
+}
+
+/* slider builder used across assessment pages */
+function makeSlider(cfg, initial, onChange){
+  const range=cfg.range||10;
+  const desc=CONFIG.sliderDesc[cfg.key]||[];
+  let val=initial==null?Math.ceil(range/2):initial;
+  const valEl=el('span',{class:'val'},String(val));
+  const descEl=el('div',{class:'desc'});
+  const setDesc=()=>{ let d=desc[val]; if(!d){ // nearest filled
+      for(let k=val;k>=1;k--){if(desc[k]){d=desc[k];break;}} }
+    descEl.textContent=d||''; };
+  const input=el('input',{type:'range',min:1,max:range,step:1,value:val});
+  input.addEventListener('input',()=>{ val=+input.value; valEl.textContent=val; setDesc(); onChange&&onChange(val); });
+  setDesc(); onChange&&onChange(val);
+  const ticks=el('div',{class:'ticks'});
+  for(let i=1;i<=range;i++) ticks.append(el('span',{},String(i)));
+  return el('div',{class:'slider'},
+    el('div',{class:'top'}, el('span',{class:'name'},cfg.label), valEl),
+    input, ticks, descEl);
+}
+
+/* ==========================================================================
+   Placeholder views (replaced/extended by later feature sections)
+   ========================================================================== */
+Views.home=(v)=>{
+  v.append(header('NeuroTrack','post-AE function tracker'));
+  v.append(el('div',{class:'card'}, el('h2',{},'Loading…'), el('p',{class:'muted'},'Boot check.')));
+};
+['trends','insights','history','events','sources','settings'].forEach(t=>{
+  Views[t]=(v)=>{ v.append(header(t[0].toUpperCase()+t.slice(1),'')); v.append(el('div',{class:'card'},el('p',{class:'muted'},'…'))); };
+});
+function header(title,sub){
+  return el('div',{class:'hdr'},
+    el('div',{class:'row'}, el('div',{class:'brandmark'}),
+      el('div',{}, el('h1',{},title), sub?el('div',{class:'sub'},sub):null)));
+}
+
+/* ==========================================================================
+   DERIVED — episodes, days-since-IVIG, per-day feature vectors
+   ========================================================================== */
+const Derive = {
+  lastIVIG(before){ let last=null;
+    const scan=(ts,isIvig)=>{ if(isIvig&&ts<=before&&(last==null||ts>last)) last=ts; };
+    D().assessments.forEach(a=>(a.meds||[]).forEach(m=>{if(m.medId==='ivig')scan(a.ts,true);}));
+    D().medLogs.forEach(m=>{if(m.medId==='ivig')scan(m.ts,true);});
+    return last;
+  },
+  daysSinceIVIG(ts){ const l=this.lastIVIG(ts); return l==null?null:Math.floor((ts-l)/DAY); },
+  ivigCyclePhase(ts){ const d=this.daysSinceIVIG(ts); if(d==null)return null; return clamp(d/14,0,2); },
+  episodeActive(kind,ts){ return D().episodes.some(e=>e.kind===kind&&e.startTs<=ts&&(e.endTs==null||e.endTs>=ts)); },
+  daysSinceEnded(kind,ts){ let best=null;
+    D().episodes.forEach(e=>{ if(e.kind===kind&&e.endTs!=null&&e.endTs<=ts){ const d=Math.floor((ts-e.endTs)/DAY); if(best==null||d<best)best=d; }});
+    return best; },
+  openEpisode(kind){ return D().episodes.find(e=>e.kind===kind&&e.endTs==null); },
+  // Med streak / stop analysis: a med taken N days in a row then stopped.
+  // Returns { dayKey -> {afterStop:1..14, streakLen} } for the 2-week post-stop window,
+  // so the correlation engine can trace rebound/withdrawal effects. Dosage carried too.
+  medStopWindow(medId){
+    const on=new Set(); const doseByDay={};
+    const mark=(ts,dose,dev)=>{ if(dose===0||dev==='missed')return; const k=dayKey(ts); on.add(k); if(typeof dose==='number')doseByDay[k]=dose; };
+    D().assessments.forEach(a=>(a.meds||[]).forEach(e=>{if(e.medId===medId)mark(e.ts,e.dose,e.deviation);}));
+    D().medLogs.forEach(e=>{if(e.medId===medId)mark(e.ts,e.dose,e.deviation);});
+    if(!on.size) return {};
+    const days=[...on].sort(); const start=new Date(days[0]+'T00:00:00').getTime();
+    const end=new Date(days[days.length-1]+'T00:00:00').getTime()+14*DAY;
+    const res={}; let streak=0, since=null, sLen=0, sDose=0;
+    for(let t=start;t<=end;t+=DAY){ const k=dayKey(t);
+      if(on.has(k)){ streak++; since=null; if(doseByDay[k])sDose=doseByDay[k]; }
+      else { if(streak>0){ sLen=streak; since=1; } else if(since!=null){ since++; } streak=0;
+        if(since!=null&&since<=14) res[k]={afterStop:since, streakLen:sLen, streakDose:sDose};
+        else since=null; } }
+    return res;
+  },
+};
+
+/* ==========================================================================
+   NEURO index (floor-anchored 0–100, higher = worse) + baseline model
+   ========================================================================== */
+const Neuro = {
+  // raw weighted burden z for one assessment, using rolling baseline of prior assessments
+  rawBurden(a, history){
+    let num=0, den=0;
+    const W=CONFIG.neuroWeights;
+    for(const key in W){
+      const {w,o}=W[key];
+      let x=null;
+      if(key.startsWith('obj_')){ if(a.objective) x=a.objective[key]; }
+      else if(a.sliders && a.sliders[key]!=null) x=a.sliders[key];
+      if(x==null) continue;
+      // baseline stats for this measure from history
+      const vals=history.map(h=> key.startsWith('obj_')?(h.objective&&h.objective[key]):(h.sliders&&h.sliders[key]))
+                        .filter(v=>v!=null&&!isNaN(v));
+      const med=vals.length>=4?Stats.median(vals):5.5;
+      const mad=vals.length>=4?Stats.mad(vals):2;
+      const z=clamp(o*(x-med)/(1.4826*mad+.5),-4,4);
+      num+=w*z; den+=w;
+    }
+    return den?num/den:0;
+  },
+  // compute NII series over all assessments (chronological), returns array {ts,nii,burden}
+  series(){
+    const A=[...D().assessments].sort((x,y)=>x.ts-y.ts);
+    const out=[]; let ewma=0, first=true;
+    const lam=0.25;
+    for(let i=0;i<A.length;i++){
+      const hist=A.slice(0,i); // prior assessments as baseline
+      const b=this.rawBurden(A[i],hist);
+      ewma=first?b:(lam*b+(1-lam)*ewma); first=false;
+      out.push({ts:A[i].ts, burden:ewma, id:A[i].id});
+    }
+    // floor-anchor: map to 0–100 using robust low/high percentiles of burden history
+    const burdens=out.map(o=>o.burden);
+    const calibrated=out.length>=D().settings.calibrateMin;
+    if(burdens.length>=6){
+      const lo=Stats.percentile(burdens,10), hi=Stats.percentile(burdens,90);
+      const span=(hi-lo)||1;
+      out.forEach(o=>{ o.nii=clamp(10+ (o.burden-lo)/span*75, 0,100); });
+    } else out.forEach(o=>o.nii=null);
+    out.calibrated=calibrated;
+    return out;
+  },
+  latest(){ const s=this.series(); return s.length?s[s.length-1]:null; },
+};
+
+/* ==========================================================================
+   SCORE — QOL & Cognitive Ability (displayed higher = better)
+   ========================================================================== */
+const Score = {
+  // burden 0..~ per assessment for a target, then invert to 0–100 better=up
+  compute(a, history){
+    const map=CONFIG.scoreMap;
+    const acc={qol:{n:0,d:0}, cog:{n:0,d:0}};
+    for(const key in map){
+      const m=map[key]; if(a.sliders[key]==null) continue;
+      const o=m.o||1;
+      const vals=history.map(h=>h.sliders&&h.sliders[key]).filter(v=>v!=null);
+      const med=vals.length>=4?Stats.median(vals):5.5, mad=vals.length>=4?Stats.mad(vals):2;
+      const z=clamp(o*(a.sliders[key]-med)/(1.4826*mad+.5),-4,4); // higher z = more burden
+      const targets=m.t==='both'?['qol','cog']:[m.t];
+      targets.forEach(t=>{ acc[t].n+=m.w*z; acc[t].d+=m.w; });
+    }
+    // objective cognitive burden (weekly)
+    if(a.objective){
+      const ov=a.objective;
+      ['obj_processingSpeed','obj_rtVariability','obj_workingMemory','obj_attention','obj_recall'].forEach(k=>{
+        if(ov[k]==null)return; const vals=history.map(h=>h.objective&&h.objective[k]).filter(v=>v!=null);
+        const med=vals.length>=3?Stats.median(vals):0, mad=vals.length>=3?Stats.mad(vals):1;
+        const z=clamp((ov[k]-med)/(1.4826*mad+.5),-4,4); // obj_ oriented higher=worse
+        // subjective attenuation: discount if high subjective cognitive burden that day
+        acc.cog.n+=0.9*z; acc.cog.d+=0.9;
+      });
+    }
+    const burdenQ=acc.qol.d?acc.qol.n/acc.qol.d:0;
+    let burdenC=acc.cog.d?acc.cog.n/acc.cog.d:0;
+    // subjective attenuation of objective
+    const alpha=D().weights.alpha;
+    const subZ=acc.cog.d?acc.cog.n/acc.cog.d:0;
+    burdenC=burdenC*(1+alpha*Math.max(0,subZ)*0.3);
+    // invert: better = up. baseline burden 0 -> 60; +z worse -> lower
+    return { qol:clamp(60-burdenQ*12,0,100), cog:clamp(60-burdenC*12,0,100) };
+  },
+  seriesAll(){
+    const A=[...D().assessments].sort((x,y)=>x.ts-y.ts);
+    const nii=Neuro.series();
+    return A.map((a,i)=>{ const s=this.compute(a,A.slice(0,i)); const nv=nii.find(n=>n.id===a.id);
+      return {ts:a.ts, id:a.id, qol:s.qol, cog:s.cog, nii:nv?nv.nii:null}; });
+  },
+};
+
+/* ==========================================================================
+   ASSESSMENT ENGINE — proctored, page-by-page
+   ========================================================================== */
+const Assess = {
+  active:null,
+  start(cadence, backfillTs){
+    const now=backfillTs||Date.now();
+    this.active={ cadence, startTs:Date.now(), forTs:now, step:0,
+      draft:{ id:uid(), ts:now, cadence, sliders:{}, exertion:{}, sleep:{}, meals:{},
+        meds:[], supplements:[], glucose:[], bp:null, objective:cadence==='weekly'?{}:null,
+        questionnaires:cadence==='weekly'?{}:null, notes:'' },
+      steps:this.buildSteps(cadence) };
+    this.render();
+  },
+  buildSteps(cadence){
+    const S=[];
+    S.push({t:'exertion', title:'Context — exertion today'});
+    S.push({t:'meds', title:'Medications & supplements'});
+    S.push({t:'vitals', title:'Vitals — glucose & blood pressure'});
+    S.push({t:'meals', title:'Meals'});
+    S.push({t:'selfcare', title:'Self-care today'});
+    S.push({t:'sleep', title:'Sleep (last night)'});
+    // slider groups
+    const sl=CONFIG.sliders;
+    for(let i=0;i<sl.length;i+=6) S.push({t:'sliders', title:'How are you? ('+(Math.floor(i/6)+1)+')', from:i, to:Math.min(i+6,sl.length)});
+    if(cadence==='weekly'){
+      S.push({t:'cog', test:'stroop', title:'Stroop — name the ink color'});
+      S.push({t:'cog', test:'symbol', title:'Symbol–Digit — processing speed'});
+      S.push({t:'cog', test:'span', title:'Digit Span — working memory'});
+      S.push({t:'cog', test:'trails', title:'Trails B — attention & switching'});
+      S.push({t:'cog', test:'search', title:'Visual Search — perception'});
+      S.push({t:'encode', title:'Memory — study these words'}); // encode early
+      S.push({t:'quiz', quiz:'dass21', title:'DASS-21'});
+      S.push({t:'quiz', quiz:'pcl5', title:'PCL-5 (PTSD)'});
+      S.push({t:'quiz', quiz:'ders16', title:'DERS-16 (emotion regulation)'});
+      // BFI-10 monthly
+      if(this.bfiDue()) S.push({t:'quiz', quiz:'bfi10', title:'BFI-10 (personality)'});
+      S.push({t:'recall', title:'Memory — recall the words'});
+    }
+    S.push({t:'mood', title:'Overall day'});
+    S.push({t:'notes', title:'Final notes'});
+    return S;
+  },
+  bfiDue(){ const last=[...D().assessments].reverse().find(a=>a.questionnaires&&a.questionnaires.bfi10);
+    return !last || (Date.now()-last.ts)>28*DAY; },
+  next(){ if(this.active.step<this.active.steps.length-1){ this.active.step++; this.render(); window.scrollTo(0,0);} },
+  prev(){ if(this.active.step>0){ this.active.step--; this.render(); window.scrollTo(0,0);} },
+  quit(){ this.active=null; go('home'); },
+  finish(){
+    const d=this.active.draft;
+    d.durationMs=Date.now()-this.active.startTs;
+    D().assessments.push(d);
+    Store.saveNow();
+    this.active=null;
+    go('history');
+    toast('Assessment saved ✓');
+  },
+  render(){
+    const a=this.active; if(!a)return;
+    const step=a.steps[a.step];
+    const v=$('#view'); v.innerHTML=''; v.className='fade';
+    // proctor bar
+    const elapsed=Math.floor((Date.now()-a.startTs)/1000);
+    const bar=el('div',{class:'row',style:'margin:2px 0 12px'},
+      el('button',{class:'btn sm ghost',onclick:()=>this.quit()},'✕'),
+      el('div',{class:'spacer'}),
+      el('span',{class:'pill'}, el('span',{class:'tag '+a.cadence},a.cadence),
+        ' ⏱ ', el('span',{id:'ptimer'},fmtElapsed(elapsed))),
+    );
+    if(!this._timer){ this._timer=setInterval(()=>{ const t=$('#ptimer'); if(!t){clearInterval(this._timer);this._timer=null;return;}
+      t.textContent=fmtElapsed(Math.floor((Date.now()-this.active.startTs)/1000)); },1000); }
+    v.append(bar);
+    // progress
+    const pct=Math.round((a.step)/(a.steps.length-1)*100);
+    v.append(el('div',{style:'height:4px;border-radius:4px;background:var(--line);margin-bottom:14px'},
+      el('div',{style:`height:100%;width:${pct}%;border-radius:4px;background:linear-gradient(90deg,var(--cyan),var(--purple));transition:.3s`})));
+    v.append(el('h2',{style:'margin:0 0 14px;font-size:19px'},step.title));
+    const body=el('div',{});
+    v.append(body);
+    this['step_'+step.t](body, step);
+  },
+  footer(nextLabel, canNext, onNext){
+    const a=this.active; const last=a.step===a.steps.length-1;
+    return el('div',{class:'row',style:'gap:10px;margin-top:8px'},
+      a.step>0?el('button',{class:'btn ghost',onclick:()=>this.prev()},'Back'):el('div',{class:'spacer'}),
+      el('div',{class:'spacer'}),
+      el('button',{class:'btn primary',disabled:canNext===false,
+        onclick:()=>{ onNext&&onNext(); if(last)this.finish(); else this.next(); }}, nextLabel||(last?'Finish':'Next')));
+  },
+  /* ---- step renderers ---- */
+  step_exertion(b){ const d=this.active.draft;
+    CONFIG.exertion.forEach(c=> b.append(makeSlider(c, d.exertion[c.key], v=>d.exertion[c.key]=v)));
+    const nic=CONFIG.sliders.find(s=>s.key==='nicotine');
+    b.append(makeSlider(nic, d.sliders.nicotine, v=>d.sliders.nicotine=v));
+    b.append(this.footer());
+  },
+  step_meds(b){ const d=this.active.draft;
+    b.append(el('p',{class:'muted',style:'margin-top:0'},'Baseline meds/supplements taken as usual need no entry. Log only deviations, or times/doses that change (e.g. Concerta, caffeine).'));
+    b.append(el('h3',{},'Medications'));
+    D().meds.forEach(m=>b.append(this.medRow(m,'meds')));
+    b.append(el('h3',{},'Supplements'));
+    D().supplements.forEach(m=>b.append(this.medRow(m,'supplements')));
+    b.append(this.footer());
+  },
+  medRow(m, coll){ const d=this.active.draft;
+    const isMg=(m.unit||'mg')==='mg' || (m.unit && m.unit!=='');
+    const list=el('div',{});
+    const doseLabel=e=>{ if(e.deviation==='missed'||e.dose===0)return '⊘ Skipped';
+      return (e.dose!=null?e.dose+(e.unit?e.unit:''):'') + ' · '+(e.changeType==='chronic'?'chronic':'acute')+' · '+fmtT(e.ts); };
+    const redraw=()=>{ list.innerHTML=''; d[coll].filter(x=>x.medId===m.id).forEach(entry=>{
+      list.append(el('div',{class:'row',style:'margin:4px 0'},
+        el('span',{class:'pill'}, doseLabel(entry)),
+        el('button',{class:'btn sm ghost',onclick:()=>{ d[coll]=d[coll].filter(x=>x!==entry); redraw(); }},'✕')));
+    }); };
+    const nowOnDay=()=>{ const now=new Date(); const day=new Date(this.active.draft.ts); day.setHours(now.getHours(),now.getMinutes(),0,0); return day.getTime(); };
+    const wrap=el('div',{style:'padding:10px 0;border-bottom:1px solid var(--line)'},
+      el('div',{class:'row'}, el('b',{style:'font-size:14px'},m.name),
+        m.baseline?el('span',{class:'pill',style:'margin-left:8px;font-size:10px'},'baseline'):null,
+        el('div',{class:'spacer'})),
+      list);
+    redraw();
+    if(coll==='meds' && (m.unit==null||m.unit==='mg')){
+      // mg numeric entry: 0 = skipped. change-type defaults to acute.
+      const mgIn=el('input',{type:'number',inputmode:'numeric',placeholder:m.baselineDose!=null?('usual '+m.baselineDose+'mg'):'mg',style:'flex:1'});
+      const ctSel=el('select',{style:'flex:1'}); CONFIG.changeTypes.forEach((c,i)=>ctSel.append(el('option',{value:i},c)));
+      const add=el('button',{class:'btn sm',onclick:()=>{ const mg=mgIn.value===''?(m.baselineDose||0):+mgIn.value;
+        d.meds.push({medId:m.id, dose:mg, unit:'mg', changeType:ctSel.selectedIndex===1?'chronic':'acute', ts:nowOnDay(), purpose:m.purpose, deviation:mg===0?'missed':'changed'});
+        mgIn.value=''; redraw(); }},'Add');
+      wrap.append(el('div',{class:'row',style:'gap:6px;margin-top:6px'}, mgIn, el('span',{class:'muted',style:'font-size:12px'},'mg')));
+      wrap.append(el('div',{class:'row',style:'gap:6px;margin-top:6px'}, ctSel, add));
+      wrap.append(el('div',{class:'muted',style:'font-size:10.5px;margin-top:4px'},'Enter mg. 0 = skipped this med / usual time. Baseline taken as usual needs no entry.'));
+    } else {
+      // preset-dose meds (e.g. IVIG infusion) + supplements
+      const controls=el('div',{class:'row wrap',style:'gap:6px;margin-top:6px'});
+      const addPreset=(dose,dev)=>{ d[coll].push({medId:m.id, dose, unit:m.unit||'', changeType:'acute', ts:nowOnDay(), purpose:m.purpose, deviation:dev}); redraw(); };
+      (m.doses||['dose']).forEach(ds=>controls.append(el('button',{class:'btn sm',onclick:()=>addPreset(ds,'added')},'+ '+ds+(m.unit&&typeof ds==='number'?m.unit:''))));
+      if(m.baseline) controls.append(el('button',{class:'btn sm ghost',onclick:()=>addPreset(0,'missed')},'Skipped'));
+      wrap.append(controls);
+    }
+    return wrap;
+  },
+  step_vitals(b){ const d=this.active.draft;
+    b.append(el('h3',{},'Glucose (mg/dL)'));
+    const g=el('div',{class:'grid2'});
+    CONFIG.glucoseSlots.forEach(slot=>{
+      g.append(el('label',{class:'fld'}, el('div',{class:'lb'},slot),
+        el('input',{type:'number',inputmode:'numeric',placeholder:'—',oninput:e=>{
+          d.glucose=d.glucose.filter(x=>x.slot!==slot); if(e.target.value) d.glucose.push({slot,value:+e.target.value,ts:d.ts}); }})));
+    });
+    b.append(g);
+    b.append(el('h3',{},'Blood pressure'));
+    const bp={sys:null,dia:null,pulse:null};
+    const set=(k,val)=>{ bp[k]=val?+val:null; d.bp=(bp.sys||bp.dia||bp.pulse)?{...bp,ts:d.ts}:null; };
+    b.append(el('div',{class:'row',style:'gap:8px'},
+      el('input',{type:'number',inputmode:'numeric',placeholder:'Sys',oninput:e=>set('sys',e.target.value)}),
+      el('input',{type:'number',inputmode:'numeric',placeholder:'Dia',oninput:e=>set('dia',e.target.value)}),
+      el('input',{type:'number',inputmode:'numeric',placeholder:'Pulse',oninput:e=>set('pulse',e.target.value)})));
+    b.append(this.footer());
+  },
+  step_meals(b){ const d=this.active.draft; d.meals={count:d.meals.count||'2',quality:d.meals.quality||5,consistency:d.meals.consistency||'normal',skipIntent:d.meals.skipIntent||'none'};
+    b.append(el('label',{class:'fld'}, el('div',{class:'lb'},'Meals eaten'),
+      seg(['1','2','3','3+'], d.meals.count, v=>d.meals.count=v)));
+    b.append(makeSlider({key:'mealQuality',label:'Meal quality (nutritional substance)'}, d.meals.quality, v=>d.meals.quality=v));
+    const intentWrap=el('div',{});
+    const drawIntent=()=>{ intentWrap.innerHTML=''; if(d.meals.consistency==='skip'){
+      intentWrap.append(el('label',{class:'fld'}, el('div',{class:'lb'},'Was the skip intentional?'),
+        seg(['Intentional (e.g. fasting)','Unintended (too tired etc.)'],
+          d.meals.skipIntent==='intentional'?'Intentional (e.g. fasting)':'Unintended (too tired etc.)',
+          v=>d.meals.skipIntent=v.startsWith('Intentional')?'intentional':'unintended'))); } };
+    b.append(el('label',{class:'fld'}, el('div',{class:'lb'},'Did you skip meals?'),
+      seg(['Didn\'t skip','Skipped'], d.meals.consistency==='skip'?'Skipped':'Didn\'t skip',
+        v=>{ d.meals.consistency=v==='Skipped'?'skip':'normal'; drawIntent(); })));
+    b.append(intentWrap); drawIntent();
+    b.append(this.footer());
+  },
+  step_selfcare(b){ const d=this.active.draft; d.selfCare=d.selfCare||[];
+    b.append(el('p',{class:'muted',style:'margin-top:0'},'Tap anything you did today. These become variables in your correlations.'));
+    D().selfCareTypes.forEach(item=>{ const on=d.selfCare.includes(item);
+      b.append(el('div',{class:'tgl'+(on?' on':''),onclick:e=>{ const i=d.selfCare.indexOf(item);
+        if(i<0)d.selfCare.push(item); else d.selfCare.splice(i,1);
+        const row=e.currentTarget; row.className='tgl'+(d.selfCare.includes(item)?' on':''); },
+        style:'cursor:pointer'}, el('div',{class:'sw'}), el('div',{class:'tinfo'}, el('b',{},item)))); });
+    b.append(this.footer());
+  },
+  step_sleep(b){ const d=this.active.draft; d.sleep=d.sleep||{};
+    const tf=(lb,key)=>el('label',{class:'fld'}, el('div',{class:'lb'},lb),
+      el('input',{type:'time',value:d.sleep[key]||'',oninput:e=>{d.sleep[key]=e.target.value; this.deriveSleep(d);}}));
+    b.append(el('div',{class:'grid2'}, tf('Got in bed','inBed'), tf('Fell asleep','onset')));
+    b.append(tf('Woke up','wake'));
+    const out=el('div',{class:'muted',id:'sleepderive'});
+    b.append(out); this.deriveSleep(d);
+    const q=CONFIG.sliders.find(s=>s.key==='sleepQuality');
+    b.append(makeSlider(q, d.sliders.sleepQuality, v=>d.sliders.sleepQuality=v));
+    b.append(this.footer());
+  },
+  deriveSleep(d){ const s=d.sleep; const out=$('#sleepderive');
+    if(s.onset&&s.wake){ const [oh,om]=s.onset.split(':').map(Number),[wh,wm]=s.wake.split(':').map(Number);
+      let mins=(wh*60+wm)-(oh*60+om); if(mins<0)mins+=1440; s.totalSleepMin=mins;
+      if(s.inBed){ const [bh,bm]=s.inBed.split(':').map(Number); let tib=(wh*60+wm)-(bh*60+bm); if(tib<0)tib+=1440; s.timeInBedMin=tib; s.efficiency=tib?Math.round(mins/tib*100):null; }
+      if(out) out.textContent=`Total sleep: ${(mins/60).toFixed(1)}h`+(s.efficiency?` · efficiency ${s.efficiency}%`:''); }
+    else if(out) out.textContent='';
+  },
+  step_sliders(b, step){ const d=this.active.draft;
+    CONFIG.sliders.slice(step.from,step.to).forEach(c=>{
+      if(c.key==='nicotine'||c.key==='sleepQuality')return; // shown elsewhere
+      b.append(makeSlider(c, d.sliders[c.key], v=>d.sliders[c.key]=v));
+    });
+    b.append(this.footer());
+  },
+  step_mood(b){ const d=this.active.draft;
+    // pull today's morning mood if it was logged separately
+    const wakeLog=[...D().moodLogs].reverse().find(m=>m.type==='wake'&&dayKey(m.ts)===dayKey(d.ts));
+    if(wakeLog&&d.sliders.moodWake==null) d.sliders.moodWake=wakeLog.value;
+    b.append(el('p',{class:'muted',style:'margin-top:0'},'A quick overall read on the day — external factors and all, independent of test scores.'));
+    b.append(makeSlider({key:'moodEnd',label:'How was today overall? (terrible → amazing)'}, d.sliders.moodEnd, v=>d.sliders.moodEnd=v));
+    b.append(el('h3',{},'Morning mood'));
+    b.append(el('p',{class:'muted',style:'margin:0 0 8px'}, wakeLog?'From your 8am check-in — adjust if needed.':'How did you feel on waking?'));
+    b.append(makeSlider({key:'moodWake',label:'Mood on waking'}, d.sliders.moodWake, v=>d.sliders.moodWake=v));
+    b.append(this.footer());
+  },
+  step_notes(b){ const d=this.active.draft;
+    // episode confirm
+    b.append(el('h3',{},'Active states right now'));
+    D().toggleTypes.forEach(t=>{ const open=Derive.openEpisode(t.id);
+      b.append(el('div',{class:'tgl'+(open?' on':''),onclick:()=>{ Toggles.flip(t.id); this.render(); }},
+        el('div',{class:'sw'}), el('div',{class:'tinfo'}, el('b',{},t.label), el('span',{},open?'On since '+fmtT(open.startTs):'Off')))); });
+    b.append(el('h3',{},'Final thoughts'));
+    b.append(el('textarea',{placeholder:'Anything notable about today…',oninput:e=>d.notes=e.target.value},d.notes));
+    b.append(this.footer('Finish ✓'));
+  },
+  // cognitive & quiz steps are defined in the cognitive module (below)
+};
+function fmtElapsed(s){ const m=Math.floor(s/60),ss=s%60; return m+':'+String(ss).padStart(2,'0'); }
+function seg(opts, val, onPick){
+  const wrap=el('div',{class:'seg'});
+  opts.forEach(o=>{ const btn=el('button',{class:val===o?'on':'',onclick:()=>{ [...wrap.children].forEach(c=>c.className=''); btn.className='on'; onPick(o); }},o);
+    wrap.append(btn); });
+  return wrap;
+}
+
+/* Episode toggles */
+const Toggles = {
+  flip(kind){ const open=Derive.openEpisode(kind);
+    if(open){ open.endTs=Date.now(); } else { D().episodes.push({id:uid(),kind,startTs:Date.now(),endTs:null}); }
+    Store.saveNow();
+  },
+};
+
+/* ==========================================================================
+   COGNITIVE TESTS (procedural — stimuli vary each session, constructs stay valid)
+   Each writes normalized metrics into draft.objective and calls Assess.next-ready
+   footer. Metrics oriented so HIGHER = WORSE (for the neuro/score engines).
+   ========================================================================== */
+function rng(seed){ let s=seed>>>0; return ()=>{ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+function shuffle(arr,r){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(r()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+Assess.step_cog=function(b, step){ const d=this.active.draft; const r=rng(this.active.forTs + step.test.length*7919);
+  const done=(metrics)=>{ Object.assign(d.objective, metrics); this.render(); this.next(); };
+  b.innerHTML='';
+  ({stroop:Cog.stroop, symbol:Cog.symbol, span:Cog.span, trails:Cog.trails, search:Cog.search})[step.test](b,r,done,this);
+};
+Assess.step_encode=function(b){ const d=this.active.draft; const r=rng(this.active.forTs+555);
+  const words=shuffle(Cog.WORDS,r).slice(0,10); d._recallWords=words;
+  b.append(el('p',{class:'muted'},'Study these 10 words. You will be asked to recall them near the end.'));
+  const grid=el('div',{class:'grid2',style:'margin:10px 0'});
+  words.forEach(w=>grid.append(el('div',{style:'background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center;font-weight:700;font-size:16px'},w)));
+  b.append(grid);
+  let t=20; const btn=el('button',{class:'btn primary block',disabled:true},'Study… 20s');
+  const iv=setInterval(()=>{ t--; btn.textContent='Study… '+t+'s'; if(t<=0){ clearInterval(iv); btn.disabled=false; btn.textContent='Continue'; } },1000);
+  btn.addEventListener('click',()=>this.next());
+  b.append(btn);
+};
+Assess.step_recall=function(b){ const d=this.active.draft; const words=d._recallWords||[];
+  b.append(el('p',{class:'muted'},'Type every word you remember (one per line or comma-separated).'));
+  const ta=el('textarea',{placeholder:'words…'}); b.append(ta);
+  b.append(this.footer('Next',true,()=>{
+    const said=ta.value.toLowerCase().split(/[\s,]+/).map(s=>s.trim()).filter(Boolean);
+    const hit=words.filter(w=>said.includes(w.toLowerCase())).length;
+    d.objective.recall_correct=hit; d.objective.obj_recall=(10-hit); // higher=worse
+  }));
+};
+Assess.step_quiz=function(b, step){ const d=this.active.draft; const q=QUIZ[step.quiz];
+  const ans=d.questionnaires['_'+step.quiz]||(d.questionnaires['_'+step.quiz]={});
+  b.append(el('p',{class:'muted'},q.instr));
+  q.items.forEach((item,i)=>{
+    b.append(el('div',{style:'margin:14px 0 6px;font-size:14px;font-weight:600'},(i+1)+'. '+item.text));
+    const wrap=el('div',{class:'seg',style:'display:flex;width:100%'});
+    q.scale.forEach((lab,si)=>{ const btn=el('button',{class:(ans[i]===si?'on':''),style:'flex:1;font-size:11px',
+      onclick:()=>{ ans[i]=si; [...wrap.children].forEach(c=>c.className=''); btn.className='on'; }},lab);
+      wrap.append(btn); });
+    b.append(wrap);
+  });
+  b.append(this.footer('Next',true,()=>{ d.questionnaires[step.quiz]=QUIZ[step.quiz].score(ans); }));
+};
+
+const Cog = {
+  WORDS:['anchor','velvet','meadow','copper','lantern','pigeon','marble','harbor','cactus','ribbon','glacier','trumpet','saddle','pretzel','compass','walnut','thunder','orchid','magnet','pillow','falcon','cinnamon','tunnel','emerald'],
+  COLORS:[['Red','#ff5c6b'],['Green','#3dff9a'],['Blue','#4d9dff'],['Yellow','#ffcf5c']],
+  timedBadge(sec){ const cd=el('b',{},sec+'s'); return {node:el('span',{class:'pill',style:'border-color:rgba(255,92,107,.5)'},'⏱ ',cd), cd}; },
+  stroop(b,r,done){ // name INK color; measure RT mean/SD + accuracy
+    const N=16; let i=0, rts=[], correct=0, t0;
+    const prompt=el('div',{style:'text-align:center;font-size:44px;font-weight:800;margin:26px 0;min-height:56px'});
+    const opts=el('div',{class:'grid2',style:'gap:10px'});
+    const stpEl=el('span',{class:'muted'});
+    const info=el('div',{class:'row',style:'justify-content:space-between;margin-bottom:6px'},el('span',{class:'muted'},'Tap the INK color'),stpEl);
+    const nextTrial=()=>{ if(i>=N){ finish(); return; }
+      const word=Cog.COLORS[Math.floor(r()*4)][0]; const ink=Cog.COLORS[Math.floor(r()*4)];
+      prompt.textContent=word; prompt.style.color=ink[1];
+      const order=shuffle(Cog.COLORS,r); opts.innerHTML='';
+      order.forEach(c=>opts.append(el('button',{class:'btn',onclick:()=>pick(c,ink)},c[0])));
+      stpEl.textContent=(i+1)+'/'+N; t0=performance.now(); };
+    const pick=(c,ink)=>{ rts.push(performance.now()-t0); if(c[0]===ink[0])correct++; i++; nextTrial(); };
+    const finish=()=>{ const mean=Stats.mean(rts), sd=Stats.sd(rts);
+      done({ stroop_rtMean:Math.round(mean), stroop_rtSD:Math.round(sd), stroop_acc:correct/N,
+        obj_processingSpeed:clamp(mean/50,0,100), obj_rtVariability:clamp(sd/30,0,100) }); };
+    b.append(info,prompt,opts);
+    b.append(el('p',{class:'muted',style:'margin-top:14px'},'Go as fast and accurately as you can.'));
+    nextTrial();
+  },
+  symbol(b,r,done){ // symbol-digit: key mapping, type digit for each symbol, 45s, count correct = speed
+    const SYM=['◆','●','▲','■','★','✚','◗','⬟','✦']; const syms=shuffle(SYM,r).slice(0,6);
+    const key={}; syms.forEach((s,i)=>key[s]=i+1);
+    const keyRow=el('div',{class:'row wrap',style:'justify-content:center;gap:10px;margin:8px 0 16px'});
+    syms.forEach(s=>keyRow.append(el('div',{style:'text-align:center'},el('div',{style:'font-size:26px'},s),el('div',{style:'font-weight:800;color:var(--cyan)'},key[s]))));
+    const cur=el('div',{style:'text-align:center;font-size:60px;margin:8px 0'});
+    const pad=el('div',{class:'grid2',style:'grid-template-columns:repeat(3,1fr);gap:8px'});
+    let correct=0, total=0, target, running=true;
+    const nextS=()=>{ target=syms[Math.floor(r()*syms.length)]; cur.textContent=target; };
+    for(let n=1;n<=6;n++) pad.append(el('button',{class:'btn',onclick:()=>{ if(!running)return; total++; if(key[target]===n)correct++; nextS(); }},String(n)));
+    const badge=Cog.timedBadge(45);
+    b.append(el('div',{class:'row',style:'justify-content:center'},badge.node));
+    b.append(keyRow,cur,pad,el('p',{class:'muted',style:'text-align:center;margin-top:12px'},'Match each symbol to its number, fast.'));
+    nextS();
+    let t=45; const iv=setInterval(()=>{ t--; if(badge.cd)badge.cd.textContent=t+'s';
+      if(t<=0){ clearInterval(iv); running=false; done({ symbol_correct:correct, symbol_total:total, obj_processingSpeed_sd:0,
+        obj_processingSpeed:clamp((60-correct)/60*100+ (correct?0:0),0,100) }); } },1000);
+  },
+  span(b,r,done){ // digit span forward then backward; span = longest correct
+    let len=3, mode='forward', best={forward:0,backward:0}, seq=[], phase='show';
+    const disp=el('div',{style:'text-align:center;font-size:52px;font-weight:800;min-height:64px;margin:20px 0'});
+    const sub=el('div',{class:'muted',style:'text-align:center'});
+    const padWrap=el('div',{});
+    const showSeq=()=>{ phase='show'; padWrap.innerHTML=''; seq=[]; for(let i=0;i<len;i++)seq.push(Math.floor(r()*10));
+      sub.textContent=mode==='forward'?'Memorize the digits':'Memorize — you\'ll enter them BACKWARD';
+      let i=0; disp.textContent=''; const iv=setInterval(()=>{ if(i<seq.length){ disp.textContent=seq[i]; i++; setTimeout(()=>disp.textContent='',500); }
+        else { clearInterval(iv); getInput(); } },800); };
+    const getInput=()=>{ phase='input'; let entry=[]; disp.textContent='_'.repeat(len); sub.textContent=mode==='forward'?'Enter in order':'Enter in REVERSE order';
+      padWrap.innerHTML=''; const pad=el('div',{class:'grid2',style:'grid-template-columns:repeat(3,1fr);gap:8px'});
+      for(let n=0;n<=9;n++){ if(n===0)continue; pad.append(digit(n)); } pad.append(digit(0));
+      function digit(n){ return el('button',{class:'btn',onclick:()=>{ entry.push(n); disp.textContent=entry.join(' '); if(entry.length===len)check(entry); }},String(n)); }
+      padWrap.append(pad); };
+    const check=(entry)=>{ const want=mode==='forward'?seq:seq.slice().reverse();
+      const ok=entry.every((x,i)=>x===want[i]);
+      if(ok){ best[mode]=len; len++; setTimeout(showSeq,400); }
+      else { if(mode==='forward'){ mode='backward'; len=3; setTimeout(showSeq,400); }
+        else { done({ span_forward:best.forward, span_backward:best.backward,
+          obj_workingMemory:clamp((10-(best.forward+best.backward)/2)*10,0,100) }); } } };
+    b.append(sub,disp,padWrap); showSeq();
+  },
+  trails(b,r,done){ // Trails B: alternate 1-A-2-B... tap in order; time + errors
+    const seq=[]; for(let i=0;i<6;i++){ seq.push(String(i+1)); seq.push(String.fromCharCode(65+i)); } seq.length=11;
+    const nodes=seq.map(lab=>({lab, x:10+r()*80, y:8+r()*78}));
+    let idx=0, errors=0, t0=performance.now();
+    const svg=el('div',{style:'position:relative;height:340px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;overflow:hidden'});
+    nodes.forEach((nd,i)=>{ const btn=el('button',{style:`position:absolute;left:${nd.x}%;top:${nd.y}%;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;background:var(--panel2);border:2px solid var(--line2);font-weight:800;color:var(--ink)`,
+      onclick:()=>{ if(seq[idx]===nd.lab){ btn.style.background='var(--green)'; btn.style.color='#012'; idx++; if(idx>=nodes.length){ finish(); } }
+        else { errors++; btn.animate([{transform:'translate(-50%,-50%) scale(1.15)'},{transform:'translate(-50%,-50%) scale(1)'}],{duration:150}); btn.style.borderColor='var(--red)'; } }},nd.lab);
+      nd.btn=btn; svg.append(btn); });
+    const finish=()=>{ const sec=(performance.now()-t0)/1000; done({ trails_sec:Math.round(sec), trails_errors:errors,
+      obj_attention:clamp(sec/1.2 + errors*5,0,100), obj_processingSpeed_trails:clamp(sec/1.2,0,100) }); };
+    b.append(el('p',{class:'muted'},'Tap in order: 1 → A → 2 → B → 3 → C … as fast as you can.'),svg);
+  },
+  search(b,r,done){ // visual search: find the odd one; several trials; RT mean
+    const N=8; let i=0, rts=[], t0;
+    const grid=el('div',{style:'display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:12px 0'});
+    const info=el('div',{class:'muted'});
+    const trial=()=>{ if(i>=N){ finish(); return; } grid.innerHTML=''; const count=24;
+      const target=Math.floor(r()*count);
+      for(let k=0;k<count;k++){ const odd=k===target;
+        grid.append(el('button',{style:`aspect-ratio:1;border-radius:8px;background:var(--panel2);border:1px solid var(--line);font-size:20px;color:${odd?'var(--pink)':'var(--cyan)'}`,
+          onclick:()=>{ if(odd){ rts.push(performance.now()-t0); i++; trial(); } }}, odd?'◑':'●')); }
+      info.textContent='Find the different one · '+(i+1)+'/'+N; t0=performance.now(); };
+    const finish=()=>{ done({ search_rtMean:Math.round(Stats.mean(rts)), obj_perception:clamp(Stats.mean(rts)/40,0,100) }); };
+    b.append(info,grid,el('p',{class:'muted'},'One item differs — tap it.')); trial();
+  },
+};
+
+/* ==========================================================================
+   QUESTIONNAIRES (public-domain / free): DASS-21, PCL-5, DERS-16, BFI-10
+   ========================================================================== */
+const QUIZ = {
+  dass21:{ instr:'Over the past week, how much did each statement apply to you?',
+    scale:['Never','Sometimes','Often','Almost always'],
+    items:[
+      {text:'I found it hard to wind down',s:'stress'},{text:'I was aware of dryness of my mouth',s:'anx'},
+      {text:'I couldn\'t seem to experience any positive feeling at all',s:'dep'},{text:'I experienced breathing difficulty',s:'anx'},
+      {text:'I found it difficult to work up the initiative to do things',s:'dep'},{text:'I tended to over-react to situations',s:'stress'},
+      {text:'I experienced trembling (e.g. in the hands)',s:'anx'},{text:'I felt that I was using a lot of nervous energy',s:'stress'},
+      {text:'I was worried about situations in which I might panic and make a fool of myself',s:'anx'},{text:'I felt that I had nothing to look forward to',s:'dep'},
+      {text:'I found myself getting agitated',s:'stress'},{text:'I found it difficult to relax',s:'stress'},
+      {text:'I felt down-hearted and blue',s:'dep'},{text:'I was intolerant of anything that kept me from getting on',s:'stress'},
+      {text:'I felt I was close to panic',s:'anx'},{text:'I was unable to become enthusiastic about anything',s:'dep'},
+      {text:'I felt I wasn\'t worth much as a person',s:'dep'},{text:'I felt that I was rather touchy',s:'stress'},
+      {text:'I was aware of the action of my heart in the absence of exertion',s:'anx'},{text:'I felt scared without any good reason',s:'anx'},
+      {text:'I felt that life was meaningless',s:'dep'},
+    ],
+    score(ans){ const sub={dep:0,anx:0,stress:0}; this.items.forEach((it,i)=>sub[it.s]+=(ans[i]||0));
+      return {dep:sub.dep*2,anx:sub.anx*2,stress:sub.stress*2}; } },
+  pcl5:{ instr:'In the past month, how much were you bothered by each problem? (0 Not at all – 4 Extremely)',
+    scale:['0','1','2','3','4'],
+    items:['Repeated, disturbing memories of the stressful experience','Repeated, disturbing dreams of the experience',
+      'Suddenly feeling or acting as if the experience were happening again','Feeling very upset when reminded of it',
+      'Strong physical reactions when reminded (heart pounding, sweating)','Avoiding memories, thoughts, or feelings related to it',
+      'Avoiding external reminders (people, places, activities)','Trouble remembering important parts of the experience',
+      'Strong negative beliefs about yourself, others, or the world','Blaming yourself or others for it',
+      'Strong negative feelings (fear, horror, anger, guilt, shame)','Loss of interest in activities you used to enjoy',
+      'Feeling distant or cut off from other people','Trouble experiencing positive feelings',
+      'Irritable behavior, angry outbursts, or acting aggressively','Taking risks or doing things that could cause harm',
+      'Being "superalert," watchful, or on guard','Feeling jumpy or easily startled',
+      'Difficulty concentrating','Trouble falling or staying asleep'].map(text=>({text})),
+    score(ans){ let sum=0; this.items.forEach((_,i)=>sum+=(ans[i]||0)); return {total:sum}; } },
+  ders16:{ instr:'How often does each apply to you? (1 Almost never – 5 Almost always)',
+    scale:['1','2','3','4','5'],
+    items:['I have difficulty making sense out of my feelings','I am confused about how I feel',
+      'When upset, I have difficulty getting work done','When upset, I become out of control',
+      'When upset, I believe I will remain that way for a long time','When upset, I believe I\'ll end up feeling very depressed',
+      'When upset, I have difficulty focusing on other things','When upset, I feel out of control',
+      'When upset, I feel ashamed of myself for feeling that way','When upset, I feel like I am weak',
+      'When upset, I have difficulty controlling my behaviors','When upset, I believe there is nothing I can do to feel better',
+      'When upset, I become irritated with myself','When upset, I start to feel very bad about myself',
+      'When upset, I have difficulty thinking about anything else','When upset, my emotions feel overwhelming'].map(text=>({text})),
+    score(ans){ let sum=0; this.items.forEach((_,i)=>sum+=((ans[i]||0)+1)); return {total:sum}; } },
+  bfi10:{ instr:'How well does each pair describe you? (1 Disagree strongly – 5 Agree strongly)',
+    scale:['1','2','3','4','5'],
+    items:['…is reserved (R)','…is generally trusting','…tends to be lazy (R)','…is relaxed, handles stress well (R)',
+      '…has few artistic interests (R)','…is outgoing, sociable','…tends to find fault with others (R)',
+      '…does a thorough job','…gets nervous easily','…has an active imagination'].map(text=>({text:'I see myself as someone who '+text})),
+    score(ans){ const v=i=>((ans[i]||0)+1); const rev=x=>6-x;
+      return { extra:(rev(v(0))+v(5))/2, agree:(v(1)+rev(v(6)))/2, consc:(rev(v(2))+v(7))/2,
+        neuro:(rev(v(3))+v(8))/2, open:(rev(v(4))+v(9))/2 }; } },
+};
+
+/* ==========================================================================
+   HOME
+   ========================================================================== */
+Views.home=(v)=>{
+  v.append(header('NeuroTrack','post-AE function tracker'));
+  // due banners
+  const dueW=isWeeklyDue();
+  if(dueW) v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'🧪'),
+    el('div',{class:'bt'}, el('b',{},'Weekly Full assessment due'), el('span',{},'Thursday evening · full cognitive battery')),
+    el('button',{class:'btn pink sm',onclick:()=>Assess.start('weekly')},'Start')));
+  if(!hasWakeMoodToday()) v.append(el('div',{class:'banner due'}, el('span',{class:'bic'},'🌅'),
+    el('div',{class:'bt'}, el('b',{},'Morning mood'), el('span',{},'A quick 1–10 read on waking (with your 8am glucose)')),
+    el('button',{class:'btn sm',onclick:()=>MoodLog.openWake()},'Log')));
+  if(!hasDailyToday()) v.append(el('div',{class:'banner due'}, el('span',{class:'bic'},'📝'),
+    el('div',{class:'bt'}, el('b',{},'End-of-day check-in'), el('span',{},'~5–8 min · mood, sliders, meds, meals, vitals')),
+    el('button',{class:'btn sm',onclick:()=>Assess.start('daily')},'Start')));
+
+  // headline indices
+  const s=Score.seriesAll(); const latest=s[s.length-1]; const nii=Neuro.series();
+  v.append(el('div',{class:'card'},
+    el('div',{class:'row'}, el('h2',{},'Today'), el('div',{class:'spacer'}),
+      el('button',{class:'btn sm ghost',onclick:()=>go('trends')},'Trends →')),
+    el('div',{class:'grid2',style:'margin-top:6px'},
+      indexTile('QOL', latest?latest.qol:null, 'var(--qol)', 'higher = better'),
+      indexTile('Cognitive', latest?latest.cog:null, 'var(--cog)', 'higher = better')),
+    el('div',{style:'margin-top:10px'},
+      indexTile('Neuroinflammation (NII)', nii.length&&nii[nii.length-1].nii!=null?nii[nii.length-1].nii:null,
+        'var(--nii)', nii.calibrated?'higher = worse · symptom proxy':'calibrating — need ~'+D().settings.calibrateMin+' assessments', true))));
+
+  // quick start
+  v.append(el('div',{class:'card'},
+    el('h2',{},'Log now'),
+    el('div',{class:'grid2',style:'margin-top:8px'},
+      el('button',{class:'btn',onclick:()=>Assess.start('daily')},'📝 Daily check-in'),
+      el('button',{class:'btn',onclick:()=>Assess.start('weekly')},'🧪 Weekly full'),
+      el('button',{class:'btn ghost',onclick:()=>MoodLog.openWake()},'🌅 Morning mood'),
+      el('button',{class:'btn ghost',onclick:()=>QuickLog.open('med')},'💊 Quick med/supp'),
+      el('button',{class:'btn ghost',onclick:()=>QuickLog.open('vital')},'🩸 Glucose / BP'))));
+
+  // episode toggles
+  v.append(el('div',{class:'card'},
+    el('h2',{},'Active states'),
+    el('p',{class:'muted',style:'margin:4px 0 10px'},'Flip on when it starts, off when it ends. Times are editable later.'),
+    ...D().toggleTypes.map(t=>{ const open=Derive.openEpisode(t.id);
+      return el('div',{class:'tgl'+(open?' on':''),onclick:()=>{ Toggles.flip(t.id); render(); }},
+        el('div',{class:'sw'}), el('div',{class:'tinfo'}, el('b',{},t.label),
+          el('span',{},open?'On since '+fmtDT(open.startTs):'Off'))); })));
+
+  v.append(el('p',{class:'muted',style:'text-align:center'},
+    D().assessments.length+' assessments logged · '+
+    (nii.calibrated?'NII active':'NII calibrating')));
+};
+function indexTile(name,val,color,note,big){
+  return el('div',{style:`background:var(--bg2);border:1px solid var(--line);border-radius:13px;padding:${big?'14px':'12px'}`},
+    el('div',{class:'muted',style:'font-size:11.5px'},name),
+    el('div',{style:`font-size:${big?'30px':'26px'};font-weight:800;color:${color};text-shadow:0 0 16px ${color}55;margin:2px 0`},
+      val==null?'—':Math.round(val)),
+    el('div',{class:'muted',style:'font-size:10.5px'},note));
+}
+function hasDailyToday(){ const t=dayKey(Date.now()); return D().assessments.some(a=>dayKey(a.ts)===t); }
+function hasWakeMoodToday(){ const t=dayKey(Date.now()); return D().moodLogs.some(m=>m.type==='wake'&&dayKey(m.ts)===t); }
+const MoodLog={ openWake(){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+  const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'Morning mood'));
+  let val=5; dlg.append(makeSlider({key:'moodWake',label:'How do you feel on waking? (terrible → amazing)'},5,v=>val=v));
+  const gv=el('input',{type:'number',inputmode:'numeric',placeholder:'wake glucose (optional)'});
+  dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Wake glucose'),gv));
+  dlg.append(el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Cancel'),
+    el('button',{class:'btn primary',onclick:()=>{ const ts=Date.now();
+      D().moodLogs.push({type:'wake',ts,value:val});
+      if(gv.value) D().vitals.push({type:'glucose',ts,value:+gv.value,slot:'Wake'});
+      Store.saveNow(); close(); toast('Morning mood logged 🌅'); render(); }},'Save')));
+  scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim); } };
+function isWeeklyDue(){ const last=[...D().assessments].reverse().find(a=>a.cadence==='weekly');
+  if(!last) return true; return (Date.now()-last.ts)>6.5*DAY; }
+
+/* Quick log (meds/vitals outside an assessment) */
+const QuickLog = {
+  open(kind){
+    const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+    const dlg=el('div',{class:'dlg'});
+    if(kind==='med'){
+      dlg.append(el('h3',{},'Quick log'));
+      const all=[...D().meds.map(m=>({...m,coll:'medLogs'})),...D().supplements.map(m=>({...m,coll:'supplementLogs'}))];
+      let sel=all[0];
+      const doseWrap=el('div',{});
+      const ctSel=el('select',{}); CONFIG.changeTypes.forEach((c,i)=>ctSel.append(el('option',{value:i},c)));
+      const ctFld=el('label',{class:'fld'},el('div',{class:'lb'},'Change type'),ctSel);
+      const fillDose=()=>{ doseWrap.innerHTML='';
+        if(sel.coll==='meds' && (sel.unit==null||sel.unit==='mg')){
+          doseWrap.append(el('div',{class:'row',style:'gap:6px'},
+            el('input',{type:'number',inputmode:'numeric',id:'qlmg',placeholder:sel.baselineDose!=null?('usual '+sel.baselineDose):'mg',style:'flex:1'}),
+            el('span',{class:'muted'},'mg')));
+          doseWrap.append(el('div',{class:'muted',style:'font-size:10.5px;margin-top:4px'},'0 = skipped'));
+          ctFld.style.display='';
+        } else { const s=el('select',{id:'qldose'}); (sel.doses||['dose']).forEach(x=>s.append(el('option',{},x+(sel.unit&&typeof x==='number'?sel.unit:''))));
+          doseWrap.append(s); ctFld.style.display='none'; } };
+      const itemSel=el('select',{onchange:e=>{ sel=all[e.target.selectedIndex]; fillDose(); }});
+      all.forEach(m=>itemSel.append(el('option',{},m.name))); fillDose();
+      dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Item'),itemSel));
+      dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Dose'),doseWrap));
+      dlg.append(ctFld);
+      dlg.append(el('div',{class:'acts'},
+        el('button',{class:'btn ghost',onclick:close},'Cancel'),
+        el('button',{class:'btn primary',onclick:()=>{ const c=sel.coll; const mgEl=$('#qlmg');
+          let dose, dev='added';
+          if(mgEl){ dose=mgEl.value===''?(sel.baselineDose||0):+mgEl.value; dev=dose===0?'missed':'changed'; }
+          else dose=($('#qldose')||{}).value;
+          D()[c].push({medId:sel.id,dose,unit:sel.unit==null?'mg':sel.unit,changeType:ctSel.selectedIndex===1?'chronic':'acute',ts:Date.now(),purpose:sel.purpose||null,deviation:dev});
+          Store.saveNow(); close(); toast(sel.name+(dose===0?' skipped':' logged')+' · '+fmtT(Date.now())); }},'Log now')));
+    } else {
+      dlg.append(el('h3',{},'Glucose / BP'));
+      const gv=el('input',{type:'number',inputmode:'numeric',placeholder:'Glucose mg/dL'});
+      const slot=el('select',{}); CONFIG.glucoseSlots.forEach(s=>slot.append(el('option',{},s)));
+      const sys=el('input',{type:'number',placeholder:'Sys'}),dia=el('input',{type:'number',placeholder:'Dia'}),pu=el('input',{type:'number',placeholder:'Pulse'});
+      dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Glucose'),el('div',{class:'row',style:'gap:8px'},gv,slot)));
+      dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Blood pressure'),el('div',{class:'row',style:'gap:8px'},sys,dia,pu)));
+      dlg.append(el('div',{class:'acts'},
+        el('button',{class:'btn ghost',onclick:close},'Cancel'),
+        el('button',{class:'btn primary',onclick:()=>{ const ts=Date.now();
+          if(gv.value) D().vitals.push({type:'glucose',ts,value:+gv.value,slot:slot.value});
+          if(sys.value||dia.value) D().vitals.push({type:'bp',ts,sys:+sys.value||null,dia:+dia.value||null,pulse:+pu.value||null});
+          Store.saveNow(); close(); toast('Vitals logged ✓'); }},'Log now')));
+    }
+    scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();});
+    document.body.append(scrim);
+  },
+};
+
+/* ==========================================================================
+   FEATURE VECTORS + CORRELATION / INSIGHTS ENGINE
+   Transparent: every finding exposes n, r, prior, confidence, timing.
+   ========================================================================== */
+const Insights = {
+  // one feature vector per calendar day (averages if multiple assessments)
+  dayVectors(){
+    const byDay={};
+    D().assessments.forEach(a=>{ const k=dayKey(a.ts); (byDay[k]=byDay[k]||[]).push(a); });
+    const days=Object.keys(byDay).sort();
+    const stopWin={}; D().meds.forEach(m=>stopWin[m.id]=Derive.medStopWindow(m.id));
+    return days.map(k=>{
+      const list=byDay[k]; const ts=list[0].ts; const v={ _day:k, _ts:ts };
+      // average sliders
+      CONFIG.sliders.forEach(s=>{ const vals=list.map(a=>a.sliders[s.key]).filter(x=>x!=null); if(vals.length)v[s.key]=Stats.mean(vals); });
+      CONFIG.exertion.forEach(s=>{ const vals=list.map(a=>a.exertion&&a.exertion[s.key]).filter(x=>x!=null); if(vals.length)v[s.key]=Stats.mean(vals); });
+      // mood (wake + end-of-day + the AM→PM shift), incl. standalone morning logs
+      const endM=list.map(a=>a.sliders&&a.sliders.moodEnd).filter(x=>x!=null);
+      let wakeM=list.map(a=>a.sliders&&a.sliders.moodWake).filter(x=>x!=null);
+      D().moodLogs.filter(m=>m.type==='wake'&&dayKey(m.ts)===k).forEach(m=>wakeM.push(m.value));
+      if(endM.length)v.moodEnd=Stats.mean(endM); if(wakeM.length)v.moodWake=Stats.mean(wakeM);
+      if(v.moodEnd!=null&&v.moodWake!=null)v.moodDelta=v.moodEnd-v.moodWake;
+      // meals
+      const meal=list.map(a=>a.meals).filter(m=>m&&m.quality!=null);
+      if(meal.length){ v.mealQuality=Stats.mean(meal.map(m=>m.quality)); v.mealCount=Stats.mean(meal.map(m=>({'1':1,'2':2,'3':3,'3+':4})[m.count]||2));
+        v.mealSkip=Stats.mean(meal.map(m=>m.consistency==='skip'?(m.skipIntent==='intentional'?0.3:-1):0)); }
+      // sleep
+      const sl=list.map(a=>a.sleep).filter(s=>s&&s.totalSleepMin!=null);
+      if(sl.length){ v.sleepMin=Stats.mean(sl.map(s=>s.totalSleepMin)); v.sleepEff=Stats.mean(sl.map(s=>s.efficiency||0)); }
+      // vitals (from assessment + standalone)
+      const gl=[]; list.forEach(a=>(a.glucose||[]).forEach(g=>gl.push(g.value)));
+      D().vitals.filter(x=>x.type==='glucose'&&dayKey(x.ts)===k).forEach(g=>gl.push(g.value));
+      if(gl.length){ const gmean=Stats.mean(gl), gsd=Stats.sd(gl);
+        v.glucoseMean=gmean; v.glucoseVar=gsd;
+        v.glucoseStability=clamp(100-(gmean?gsd/gmean*100:0),0,100); // % stability across the day (100 − CV%)
+        if(gl.length>=2){ v.glucoseSpike=Math.max(...gl); v.glucoseTrough=Math.min(...gl); v.glucoseRange=Math.max(...gl)-Math.min(...gl); } }
+      // meds: deviation events per med (acute change/timing vs chronic regimen change; 0mg = missed)
+      D().meds.forEach(m=>{ let changes=0,missed=0,added=0,chronic=0,doseSum=0,doseN=0;
+        const tally=e=>{ if(e.medId!==m.id)return; if(e.deviation==='missed'||e.dose===0)missed++;
+          else { if(e.changeType==='chronic')chronic++; else changes++; if(typeof e.dose==='number'){doseSum+=e.dose;doseN++;} added++; } };
+        list.forEach(a=>(a.meds||[]).forEach(tally));
+        D().medLogs.filter(e=>dayKey(e.ts)===k).forEach(tally);
+        if(missed)v['med_'+m.id+'_missed']=missed;
+        if(changes||added)v['med_'+m.id+'_change']=changes+added;
+        if(chronic)v['med_'+m.id+'_chronic']=chronic;
+        if(doseN)v['med_'+m.id+'_mg']=doseSum/doseN;
+        // post-stop (rebound/withdrawal) window: days since a streak ended + how long it ran
+        const sw=stopWin[m.id]&&stopWin[m.id][k];
+        if(sw){ v['med_'+m.id+'_afterStop']=sw.afterStop; v['med_'+m.id+'_streakLen']=sw.streakLen; } });
+      // self-care (binary per activity today)
+      D().selfCareTypes.forEach(item=>{ const did=list.some(a=>(a.selfCare||[]).includes(item));
+        v['sc_'+item]=did?1:0; });
+      // derived episode/IVIG
+      v.daysSinceIVIG=Derive.daysSinceIVIG(ts);
+      D().toggleTypes.forEach(t=>{ v['ep_'+t.id+'_active']=Derive.episodeActive(t.id,ts)?1:0;
+        const since=Derive.daysSinceEnded(t.id,ts); if(since!=null&&since<=10)v['ep_'+t.id+'_after']=since; });
+      // weekly objective + indices
+      const wk=list.find(a=>a.cadence==='weekly'&&a.objective);
+      if(wk){ ['obj_processingSpeed','obj_rtVariability','obj_workingMemory','obj_attention','obj_recall'].forEach(kk=>{ if(wk.objective[kk]!=null)v[kk]=wk.objective[kk]; }); }
+      return v;
+    });
+  },
+  // curated predictor/outcome variable definitions with friendly labels
+  vars(){
+    const V={};
+    CONFIG.sliders.forEach(s=>V[s.key]={label:s.label,kind:'symptom'});
+    V.mental={label:'Mental exertion',kind:'predictor'}; V.physical={label:'Physical exertion',kind:'predictor'};
+    V.mealQuality={label:'Meal quality',kind:'predictor'}; V.mealCount={label:'Meal count',kind:'predictor'};
+    V.mealSkip={label:'Meal consistency (signed)',kind:'predictor'};
+    V.sleepMin={label:'Total sleep time',kind:'predictor'}; V.sleepEff={label:'Sleep efficiency',kind:'predictor'};
+    V.glucoseMean={label:'Glucose (mean)',kind:'predictor'}; V.glucoseVar={label:'Glucose variability',kind:'predictor'};
+    V.glucoseStability={label:'Glucose stability % (day)',kind:'predictor'}; V.glucoseSpike={label:'Glucose spike (daily max)',kind:'predictor'};
+    V.glucoseTrough={label:'Glucose trough (daily min)',kind:'predictor'}; V.glucoseRange={label:'Glucose swing (max−min)',kind:'predictor'};
+    V.daysSinceIVIG={label:'Days since IVIG',kind:'predictor'};
+    V.moodWake={label:'Morning mood',kind:'predictor'}; V.moodEnd={label:'End-of-day mood',kind:'symptom'};
+    V.moodDelta={label:'Mood shift (AM→PM)',kind:'predictor'};
+    D().selfCareTypes.forEach(item=>{ V['sc_'+item]={label:item,kind:'predictor'}; });
+    D().meds.forEach(m=>{ V['med_'+m.id+'_change']={label:m.name+' dose change',kind:'predictor'}; V['med_'+m.id+'_missed']={label:m.name+' missed',kind:'predictor'};
+      V['med_'+m.id+'_chronic']={label:m.name+' chronic-regimen change',kind:'predictor'};
+      V['med_'+m.id+'_mg']={label:m.name+' dose (mg)',kind:'predictor'};
+      V['med_'+m.id+'_afterStop']={label:'Days since stopping '+m.name,kind:'predictor'};
+      V['med_'+m.id+'_streakLen']={label:m.name+' prior streak length',kind:'predictor'}; });
+    D().toggleTypes.forEach(t=>{ V['ep_'+t.id+'_active']={label:t.label+' (active)',kind:'predictor'};
+      V['ep_'+t.id+'_after']={label:'Days since '+t.label+' ended',kind:'predictor'}; });
+    V.obj_processingSpeed={label:'Processing speed (obj)',kind:'objective'}; V.obj_rtVariability={label:'RT variability (obj)',kind:'objective'};
+    V.obj_workingMemory={label:'Working memory (obj)',kind:'objective'}; V.obj_attention={label:'Attention (obj)',kind:'objective'};
+    return V;
+  },
+  prior(a,b){ return D().priors.find(p=>(p.a===a&&p.b===b)||(p.a===b&&p.b===a)); },
+  compute(){
+    const vecs=this.dayVectors();
+    const nDays=vecs.length;
+    const spanDays=nDays?((vecs[nDays-1]._ts-vecs[0]._ts)/DAY):0;
+    if(nDays<5||spanDays<7) return {locked:true, nDays, spanDays:Math.round(spanDays)};
+    const V=this.vars();
+    const keys=Object.keys(V);
+    const outcomes=keys.filter(k=>V[k].kind==='symptom'||V[k].kind==='objective');
+    const predictors=keys.filter(k=>V[k].kind!=='objective');
+    const findings=[];
+    const lags=[0,1,2,3,7]; // acute (same/next-day) → subacute/chronic (up to a week later)
+    const series=k=>vecs.map(v=>v[k]);
+    for(const pk of predictors){
+      const pv=series(pk).map(x=>x==null?null:+x);
+      const present=pv.filter(x=>x!=null);
+      if(present.length<5) continue;
+      // low-variance guard: flag only NEAR-CONSTANT exposures (≥90% identical), e.g. a
+      // steadily-dosed med — those can't yield honest correlations. Balanced binaries pass.
+      const counts={}; present.forEach(x=>{const kk=Math.round(x*100);counts[kk]=(counts[kk]||0)+1;});
+      const topFrac=Math.max(...Object.values(counts))/present.length;
+      const lowVar=topFrac>0.9;
+      for(const ok of outcomes){
+        if(ok===pk) continue;
+        for(const lag of lags){
+          // align predictor day t with outcome day t+lag by _ts
+          const xs=[],ys=[];
+          vecs.forEach((v,i)=>{ if(v[pk]==null)return; const tgt=vecs.find(w=>Math.round((w._ts-v._ts)/DAY)===lag);
+            if(tgt&&tgt[ok]!=null){ xs.push(+v[pk]); ys.push(+tgt[ok]); } });
+          if(xs.length<5) continue;
+          const {r,n}=Stats.spearman(xs,ys);
+          if(lowVar && lag===0) continue; // suppress level corr for constant predictors
+          // reproducibility: split-half sign agreement
+          const half=Math.floor(xs.length/2);
+          const r1=Stats.spearman(xs.slice(0,half),ys.slice(0,half)).r;
+          const r2=Stats.spearman(xs.slice(half),ys.slice(half)).r;
+          const repro=(Math.sign(r1)===Math.sign(r2)&&Math.abs(r1)>.1&&Math.abs(r2)>.1)?0.9:(Math.sign(r1)===Math.sign(r2)?0.55:0.2);
+          const prior=this.prior(pk,ok);
+          const rEst=Stats.shrink(r,n,prior);
+          const conf=Stats.confidence(rEst,n,repro);
+          if(conf<25) continue;
+          findings.push({ pk, ok, pLabel:V[pk].label, oLabel:V[ok].label, r:+rEst.toFixed(2), rObs:+r.toFixed(2), n, lag,
+            conf, prior:!!prior, timing: lag===0?'same-day':(lag===1?'next-day':(lag>=7?'a week later':lag+'-day delay')),
+            chronic: lag>=7||pk.endsWith('_afterStop')||pk.endsWith('_streakLen')||pk.endsWith('_chronic')||pk.endsWith('_after'),
+            after: pk.endsWith('_after')||pk.endsWith('_afterStop'), confound: (pk.startsWith('ep_')&&ok==='sleepQuality') });
+        }
+      }
+    }
+    // dedupe: keep best lag per (pk,ok)
+    const best={};
+    findings.forEach(f=>{ const k=f.pk+'|'+f.ok; if(!best[k]||f.conf>best[k].conf)best[k]=f; });
+    const list=Object.values(best).sort((a,b)=>b.conf-a.conf);
+    return { locked:false, nDays, spanDays:Math.round(spanDays), findings:list, missedDays:this.gapDays(vecs) };
+  },
+  gapDays(vecs){ if(vecs.length<2)return 0; let gaps=0; for(let i=1;i<vecs.length;i++){ const d=Math.round((vecs[i]._ts-vecs[i-1]._ts)/DAY); if(d>1)gaps+=d-1; } return gaps; },
+};
+function confColor(c){ if(c>=75)return 'var(--green)'; if(c>=50)return 'var(--amber)'; if(c>=35)return '#ff9a5c'; return 'var(--red)'; }
+
+/* ==========================================================================
+   TRENDS — Robinhood-style multi-line SVG chart
+   ========================================================================== */
+const TF=[['1W',7],['1M',30],['3M',90],['1Y',365],['ALL',99999]];
+let trendState={tf:'1M', lines:{qol:true,cog:true,nii:true}, scrub:null};
+Views.trends=(v)=>{
+  v.append(header('Trends',''));
+  const all=Score.seriesAll();
+  const days=TF.find(t=>t[0]===trendState.tf)[1];
+  const cut=Date.now()-days*DAY;
+  const data=all.filter(p=>p.ts>=cut);
+  // header value + delta
+  const info=el('div',{class:'card'});
+  const valWrap=el('div',{id:'trendval'});
+  info.append(valWrap);
+  // chart
+  const chart=el('div',{id:'chartbox'});
+  info.append(chart);
+  // timeframe pills
+  const pills=el('div',{class:'seg',style:'margin-top:10px'});
+  TF.forEach(t=>pills.append(el('button',{class:trendState.tf===t[0]?'on':'',onclick:()=>{trendState.tf=t[0];trendState.scrub=null;render();}},t[0])));
+  info.append(pills);
+  // line toggles
+  const tog=el('div',{class:'row wrap',style:'gap:8px;margin-top:10px'});
+  [['qol','QOL','var(--qol)'],['cog','Cognitive','var(--cog)'],['nii','Neuroinflammation','var(--nii)']].forEach(([k,lab,c])=>{
+    tog.append(el('button',{class:'pill',style:`cursor:pointer;opacity:${trendState.lines[k]?1:.4};border-color:${c}`,
+      onclick:()=>{trendState.lines[k]=!trendState.lines[k];render();}},
+      el('span',{style:`width:10px;height:10px;border-radius:50%;background:${c};display:inline-block`}),lab));
+  });
+  info.append(tog);
+  v.append(info);
+  drawChart(chart, valWrap, data);
+  // legend note
+  v.append(el('p',{class:'muted',style:'text-align:center'},'QOL & Cognitive: higher = better. Neuroinflammation: higher = worse (symptom-derived proxy).'));
+  if(!Neuro.series().calibrated) v.append(el('div',{class:'banner'},el('span',{class:'bic'},'⏳'),el('div',{class:'bt'},el('b',{},'NII calibrating'),el('span',{},'The pink line needs ~'+D().settings.calibrateMin+' assessments across an IVIG cycle before it anchors.'))));
+};
+function drawChart(box, valBox, data){
+  box.innerHTML=''; valBox.innerHTML='';
+  if(data.length<2){ box.append(el('div',{class:'empty'},'Not enough data yet — log a few assessments to see trends.')); return; }
+  const W=340,H=190,pad=6;
+  const lines=[['qol','var(--qol)'],['cog','var(--cog)'],['nii','var(--nii)']].filter(l=>trendState.lines[l[0]]);
+  const xs=data.map(d=>d.ts); const xmin=Math.min(...xs),xmax=Math.max(...xs);
+  const X=t=>pad+(xmax===xmin?0.5:(t-xmin)/(xmax-xmin))*(W-2*pad);
+  const Y=val=>H-pad-(val/100)*(H-2*pad);
+  const svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;touch-action:none">
+    <defs><filter id="glow"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    <line x1="${pad}" y1="${Y(50)}" x2="${W-pad}" y2="${Y(50)}" stroke="var(--line2)" stroke-dasharray="2 4"/>`
+    + lines.map(([k,c])=>{ const pts=data.filter(d=>d[k]!=null); if(pts.length<2)return '';
+      const dpath=pts.map((p,i)=>(i?'L':'M')+X(p.ts).toFixed(1)+' '+Y(p[k]).toFixed(1)).join(' ');
+      return `<path d="${dpath}" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>`; }).join('')
+    + `<line id="scrubline" x1="0" y1="${pad}" x2="0" y2="${H-pad}" stroke="var(--ink3)" opacity="0"/>`
+    + `</svg>`;
+  box.innerHTML=svg;
+  // header current values
+  const last=data[data.length-1], first=data[0];
+  const showVals=(pt)=>{ valBox.innerHTML='';
+    lines.forEach(([k,c])=>{ if(pt[k]==null)return; const delta=pt[k]-(first[k]||pt[k]);
+      valBox.append(el('div',{class:'row',style:'gap:8px;align-items:baseline'},
+        el('span',{style:`width:9px;height:9px;border-radius:50%;background:${c};display:inline-block`}),
+        el('span',{style:`font-size:22px;font-weight:800;color:${c}`},Math.round(pt[k])),
+        el('span',{style:`font-size:12px;color:${delta>=0?'var(--green)':'var(--red)'}`}, (delta>=0?'▲ ':'▼ ')+Math.abs(delta).toFixed(0)),
+        el('span',{class:'muted',style:'font-size:11px'},({qol:'QOL',cog:'Cognitive',nii:'NII'})[k]))); });
+    valBox.append(el('div',{class:'muted',style:'font-size:11px;margin-top:2px'},fmtDT(pt.ts))); };
+  showVals(last);
+  // scrub
+  const svgEl=box.querySelector('svg'); const scrub=svgEl.querySelector('#scrubline');
+  const onMove=e=>{ const rect=svgEl.getBoundingClientRect(); const cx=(e.touches?e.touches[0].clientX:e.clientX)-rect.left;
+    const sx=cx/rect.width*W; let nearest=data[0],nd=1e9; data.forEach(d=>{const dx=Math.abs(X(d.ts)-sx);if(dx<nd){nd=dx;nearest=d;}});
+    scrub.setAttribute('x1',X(nearest.ts)); scrub.setAttribute('x2',X(nearest.ts)); scrub.setAttribute('opacity','.6'); showVals(nearest); };
+  const onEnd=()=>{ scrub.setAttribute('opacity','0'); showVals(last); };
+  svgEl.addEventListener('touchmove',onMove); svgEl.addEventListener('mousemove',e=>{if(e.buttons)onMove(e);});
+  svgEl.addEventListener('touchend',onEnd); svgEl.addEventListener('mouseleave',onEnd);
+}
+
+/* ==========================================================================
+   DEV SEED — synthetic multi-week dataset (hidden helper, for testing)
+   ========================================================================== */
+const Dev = {
+  seed(nDays=70){
+    const d=D(); const now=Date.now();
+    // one IVIG every 14 days
+    for(let day=nDays; day>=0; day--){
+      const ts=now-day*DAY + 20*3600000/24*20; const rr=(Math.sin(day)+1)/2;
+      const cycle=(nDays-day)%14; const ivigNear=cycle<3;
+      const base=v=>clamp(Math.round(v),1,10);
+      const sick=day>40&&day<46; // an illness episode
+      const inflam= (cycle/14)*2 + (sick?3:0) + (Math.random()*1.5);
+      const a={ id:uid(), ts, cadence: ((nDays-day)%7===0)?'weekly':'daily',
+        sliders:{ fatigue:base(4+inflam), cogFatigue:base(3+inflam), brainFog:base(3+inflam),
+          depression:base(3+inflam*0.7), anxiety:base(4+Math.random()*2), sleepQuality:base(7-inflam*0.5),
+          overstim:base(4+inflam*0.4), pem:base(2+inflam*0.6+ (day%9===0?3:0)), iceBrain:base(2+inflam*0.5),
+          emotEngagement:base(6-inflam*0.4), visualDistortion:base(2+inflam*0.3), rumination:base(4+Math.random()*3),
+          emotStressors:base(3+Math.random()*3), envStressors:base(3+Math.random()*2), generalStress:base(4+Math.random()*3),
+          maritalStress:base(3+Math.random()*2), socializing:base(3+Math.random()*4), nicotine:base(1+Math.random()*2)%4+1,
+          moodEnd:base(7-inflam*0.5+Math.random()*2), moodWake:base(6-inflam*0.4+Math.random()*2) },
+        exertion:{ mental:base(4+Math.random()*4), physical:base(3+Math.random()*4) },
+        sleep:{ totalSleepMin:Math.round(360+Math.random()*140-inflam*15), efficiency:Math.round(80-inflam*3+Math.random()*10) },
+        meals:{ count:['2','3','3+'][Math.floor(Math.random()*3)], quality:base(6-inflam*0.3), consistency: Math.random()<0.2?'skip':'normal', skipIntent: Math.random()<0.5?'intentional':'unintended' },
+        meds:[], glucose:[{slot:'Wake',value:Math.round(88+Math.random()*20),ts},{slot:'Noon',value:Math.round(100+Math.random()*40+inflam*4),ts},{slot:'8pm',value:Math.round(95+Math.random()*30),ts}], bp:null,
+        selfCare:[ ...(Math.random()<0.4?['Meditated']:[]), ...(Math.random()<0.2?['Cold plunge']:[]), ...(Math.random()<0.3?['Designated resting']:[]), ...(inflam>3&&Math.random()<0.6?['Nap x1']:[]), ...(Math.random()<0.3?['Recreational activities']:[]) ], notes:'' };
+      if((nDays-day)%14===0) a.meds.push({medId:'ivig',dose:'Infusion',ts,deviation:'added',purpose:'Immunomodulation'});
+      // Concerta streak: taken days 30..26 then STOPPED — models a rebound-PEM scenario
+      const inStreak=(day<=30&&day>=26);
+      if(inStreak) a.meds.push({medId:'concerta',dose:36,unit:'mg',changeType:'acute',ts,deviation:'changed',purpose:'Executive function'});
+      else if(Math.random()<0.3) a.meds.push({medId:'concerta',dose:[18,36,54][Math.floor(Math.random()*3)],unit:'mg',changeType:'acute',ts,deviation:'changed',purpose:'Executive function'});
+      // amplify PEM in the ~10 days after the streak stops (day 25..16)
+      if(day<26&&day>=16){ a.sliders.pem=clamp(a.sliders.pem+ (26-day<=5?4:2),1,10); }
+      if(a.cadence==='weekly'){ a.objective={ obj_processingSpeed:clamp(20+inflam*8+Math.random()*10,0,100),
+        obj_rtVariability:clamp(15+inflam*7+Math.random()*10,0,100), obj_workingMemory:clamp(20+inflam*5,0,100),
+        obj_attention:clamp(20+inflam*6,0,100), obj_recall:clamp(2+inflam*0.5,0,10) };
+        a.questionnaires={ dass21:{dep:Math.round(inflam*3),anx:Math.round(8+Math.random()*6),stress:Math.round(10+inflam*2)} }; }
+      d.assessments.push(a);
+    }
+    // illness episode
+    d.episodes.push({id:uid(),kind:'illness',startTs:now-46*DAY,endTs:now-40*DAY});
+    d.episodes.push({id:uid(),kind:'childcare',startTs:now-10*DAY,endTs:now-8*DAY});
+    d.events.push({id:uid(),date:dayKey(now-43*DAY),type:'Relapse',note:'seeded'});
+    Store.saveNow();
+  },
+};
+
+/* ==========================================================================
+   INSIGHTS VIEW
+   ========================================================================== */
+let insightState={filter:'all'};
+Views.insights=(v)=>{
+  if(State.sub==='modelcard'){ return renderModelCard(v); }
+  v.append(header('Insights',''));
+  const r=Insights.compute();
+  // NII summary card
+  const nii=Neuro.series(); const last=nii.length?nii[nii.length-1]:null;
+  v.append(el('div',{class:'card'},
+    el('div',{class:'row'}, el('h2',{},'Neuroinflammation Index'),
+      el('div',{class:'spacer'}),
+      el('div',{style:`font-size:26px;font-weight:800;color:var(--nii)`}, last&&last.nii!=null?Math.round(last.nii):'—')),
+    el('p',{class:'muted',style:'margin:6px 0'}, nii.calibrated
+      ? 'A symptom-derived proxy (0–100, higher = worse), anchored so ~10 is your calm baseline. Not a biomarker.'
+      : 'Calibrating — needs ~'+D().settings.calibrateMin+' assessments across an IVIG cycle.'),
+    el('div',{class:'row',style:'gap:8px'},
+      el('button',{class:'btn sm',onclick:()=>go('insights','modelcard')},'How it\'s built (model card)'),
+      el('button',{class:'btn sm ghost',onclick:()=>Lit.refresh(v)},'↻ Refresh literature'))));
+
+  if(r.locked){
+    v.append(el('div',{class:'card'}, el('h2',{},'Correlations locked'),
+      el('p',{class:'muted'},'The algorithm unlocks after ≥5 assessments spanning ≥1 week. So far: '+r.nDays+' days of data over '+r.spanDays+' days.'),
+      el('button',{class:'btn ghost sm',onclick:()=>Assess.start('daily')},'Log a check-in')));
+    return;
+  }
+  // honesty note + missed days
+  v.append(el('div',{class:'banner'}, el('span',{class:'bic'},'ℹ️'),
+    el('div',{class:'bt'}, el('b',{},r.findings.length+' patterns found across '+r.nDays+' days'),
+      el('span',{}, (r.missedDays?r.missedDays+' missed days lower confidence. ':'')+'Many pairs are tested — treat lower confidences as tentative. Correlation ≠ causation.'))));
+
+  // filter chips
+  const chips=el('div',{class:'seg',style:'margin-bottom:12px;flex-wrap:wrap'});
+  [['all','All'],['delayed','Delayed / after-effects'],['strong','Strong (≥60%)']].forEach(([k,lab])=>
+    chips.append(el('button',{class:insightState.filter===k?'on':'',onclick:()=>{insightState.filter=k;render();}},lab)));
+  v.append(chips);
+
+  let list=r.findings;
+  if(insightState.filter==='delayed') list=list.filter(f=>f.lag>0||f.after||f.chronic);
+  if(insightState.filter==='strong') list=list.filter(f=>f.conf>=60);
+  list.slice(0,50).forEach(f=>v.append(findingCard(f)));
+  if(!list.length) v.append(el('div',{class:'empty'},'No patterns in this filter yet.'));
+};
+function findingCard(f){
+  const card=el('div',{class:'card',style:'padding:13px'});
+  const dir=f.r>0?'↑ together':'↓ opposite';
+  card.append(el('div',{class:'row'},
+    el('div',{style:'flex:1'},
+      el('div',{style:'font-size:14px;font-weight:700'}, f.pLabel+' → '+f.oLabel),
+      el('div',{class:'muted',style:'font-size:11.5px'}, dir+' · '+f.timing+(f.after?' (after it ends)':'')+' · n='+f.n)),
+    el('div',{style:`text-align:right`},
+      el('div',{style:`font-size:20px;font-weight:800;color:${confColor(f.conf)}`},f.conf+'%'),
+      el('div',{class:'muted',style:'font-size:9px'},'confidence'))));
+  // confidence bar
+  card.append(el('div',{style:'height:5px;border-radius:5px;background:var(--line);margin:8px 0 4px'},
+    el('div',{style:`height:100%;width:${f.conf}%;border-radius:5px;background:${confColor(f.conf)}`})));
+  const detail=el('div',{class:'muted',style:'display:none;font-size:11.5px;margin-top:8px;line-height:1.6'});
+  detail.innerHTML=`observed r=${f.rObs} · shrunk estimate=${f.r} · n=${f.n} pairs · lag=${f.lag}d`
+    +(f.prior?' · nudged by a literature prior':' · purely data-driven')
+    +(f.confound?'<br><b style="color:var(--amber)">⚠ possibly confounded</b> — these may share a common cause.':'')
+    +'<br>Confidence blends effect size, sample size (precision), and reproducibility across time windows.';
+  card.append(el('button',{class:'btn sm ghost',style:'margin-top:4px;padding:4px 8px',
+    onclick:()=>{detail.style.display=detail.style.display==='none'?'block':'none';}},'How this was computed'),detail);
+  return card;
+}
+const EVIDENCE={strong:['var(--green)','strong'],moderate:['var(--amber)','moderate'],weak:['#ff9a5c','weak'],experimental:['var(--red)','anecdotal']};
+function renderModelCard(v){
+  v.append(el('div',{class:'hdr'}, el('div',{class:'row'},
+    el('button',{class:'btn sm ghost',onclick:()=>go('insights')},'‹ Back'),
+    el('h1',{style:'font-size:18px;margin-left:6px'},'NII model card'))));
+  v.append(el('div',{class:'card'}, el('h2',{},'What the pink line uses — and extrapolates'),
+    el('p',{class:'muted',style:'line-height:1.6'},'The Neuroinflammation Index is a SYMPTOM-DERIVED PROXY, not a biomarker. It measures no cytokines, antibodies, or imaging. It combines the symptoms and cognitive scores that research most consistently links to inflammation, weighted below by evidence strength, each compared to YOUR own rolling baseline. 50 would be baseline; it is floor-anchored so ~10 is your calm range.')));
+  const W=CONFIG.neuroWeights; const label=k=>{ const s=CONFIG.sliders.find(s=>s.key===k); if(s)return s.label;
+    return ({obj_processingSpeed:'Processing speed',obj_rtVariability:'Reaction-time variability',obj_workingMemory:'Working memory',obj_attention:'Attention',obj_recall:'Delayed recall'})[k]||k; };
+  const table=el('div',{class:'card'}); table.append(el('h3',{style:'margin-top:0'},'Measure loadings'));
+  Object.keys(W).sort((a,b)=>W[b].w-W[a].w).forEach(k=>{ const w=W[k]; const ev=EVIDENCE[w.flag||(w.w>=.8?'strong':w.w>=.5?'moderate':'weak')];
+    table.append(el('div',{class:'row',style:'padding:7px 0;border-bottom:1px solid var(--line)'},
+      el('div',{style:'flex:1'}, el('div',{style:'font-size:13px;font-weight:600'},label(k)),
+        el('div',{class:'muted',style:'font-size:10.5px'}, (w.o>0?'higher = more inflammation':'lower = more inflammation'))),
+      el('span',{class:'pill',style:`font-size:10px;border-color:${ev[0]}`},ev[1]),
+      el('b',{style:'width:44px;text-align:right;color:var(--nii)'},w.w.toFixed(1)))); });
+  v.append(table);
+  v.append(el('div',{class:'card'}, el('h3',{style:'margin-top:0'},'Assumptions we extrapolate'),
+    el('ul',{class:'muted',style:'line-height:1.7;padding-left:18px'},
+      el('li',{},'That this symptom pattern approximates neuroinflammatory burden (an evidence-based association, not a measurement).'),
+      el('li',{},'The floor-anchored 0–100 mapping (your 10th percentile → ~10).'),
+      el('li',{},'A days-since-IVIG cycle expectation (end-of-cycle wear-off is partly expected).'),
+      el('li',{},'The weights themselves — literature priors, editable, shown above.'))));
+  v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'⚕️'),
+    el('div',{class:'bt'}, el('b',{},'Do not self-diagnose a relapse'),
+      el('span',{},'A rising trend is a prompt to rest and check sleep/stress. If it climbs and stays high — or comes with new seizures, severe confusion, or psychiatric changes — contact your neurologist.'))));
+}
+
+/* Refresh-literature (Europe PMC, keyless CORS) */
+const Lit={
+  async refresh(v){ toast('Searching Europe PMC…');
+    try{
+      const q=encodeURIComponent('autoimmune encephalitis neuroinflammation fatigue cognition IVIG');
+      const res=await fetch('https://www.ebi.ac.uk/europepmc/webservices/rest/search?query='+q+'&format=json&pageSize=8&sort=P_PDATE_D%20desc');
+      const j=await res.json();
+      const items=(j.resultList&&j.resultList.result||[]).map(r=>({title:r.title,authors:r.authorString,year:r.pubYear,id:r.id,src:r.source}));
+      D().literatureCache={fetched:Date.now(),items}; D().prioReviewed=Date.now(); Store.saveNow();
+      toast('Found '+items.length+' recent papers'); render();
+    }catch(e){ toast('Offline — showing cached results'); }
+  },
+};
+
+/* ==========================================================================
+   HISTORY — calendar + list + detail + backfill
+   ========================================================================== */
+let histState={view:'calendar', month:new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime()};
+Views.history=(v)=>{
+  if(State.sub&&State.sub.startsWith('a:')){ return renderAssessmentDetail(v, State.sub.slice(2)); }
+  v.append(header('History',''));
+  v.append(el('div',{class:'row',style:'margin-bottom:12px'},
+    seg(['Calendar','List'], histState.view==='calendar'?'Calendar':'List', x=>{histState.view=x.toLowerCase();render();}),
+    el('div',{class:'spacer'}),
+    el('button',{class:'btn sm',onclick:()=>Backfill.open()},'+ Backfill a day')));
+  histState.view==='calendar'?renderCalendar(v):renderList(v);
+};
+function renderCalendar(v){
+  const m=new Date(histState.month); const y=m.getFullYear(),mo=m.getMonth();
+  const first=new Date(y,mo,1), start=first.getDay(), days=new Date(y,mo+1,0).getDate();
+  const byDay={}; D().assessments.forEach(a=>{ (byDay[dayKey(a.ts)]=byDay[dayKey(a.ts)]||[]).push(a); });
+  const evByDay={}; D().events.forEach(e=>{ (evByDay[e.date]=evByDay[e.date]||[]).push(e); });
+  const card=el('div',{class:'card'});
+  card.append(el('div',{class:'row',style:'margin-bottom:10px'},
+    el('button',{class:'btn sm ghost',onclick:()=>{histState.month=new Date(y,mo-1,1).getTime();render();}},'‹'),
+    el('div',{class:'spacer'}), el('b',{},m.toLocaleDateString([],{month:'long',year:'numeric'})), el('div',{class:'spacer'}),
+    el('button',{class:'btn sm ghost',onclick:()=>{histState.month=new Date(y,mo+1,1).getTime();render();}},'›')));
+  const grid=el('div',{style:'display:grid;grid-template-columns:repeat(7,1fr);gap:4px'});
+  ['S','M','T','W','T','F','S'].forEach(d=>grid.append(el('div',{class:'muted',style:'text-align:center;font-size:10px;padding:2px'},d)));
+  for(let i=0;i<start;i++) grid.append(el('div',{}));
+  for(let d=1;d<=days;d++){ const key=y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const items=byDay[key]||[]; const evs=evByDay[key]||[];
+    const cell=el('button',{style:`aspect-ratio:1;border-radius:9px;border:1px solid ${items.length?'var(--line2)':'var(--line)'};background:${items.length?'var(--panel2)':'transparent'};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px`,
+      onclick:()=>{ if(items.length===1) go('history','a:'+items[0].id); else if(items.length>1){ histState.view='list'; render(); } }},
+      el('span',{style:'font-size:11px;color:var(--ink2)'},d),
+      el('div',{class:'row',style:'gap:2px'},
+        ...items.slice(0,3).map(a=>el('span',{style:`width:5px;height:5px;border-radius:50%;background:${a.cadence==='weekly'?'var(--purple)':'var(--blue)'}`})),
+        ...(evs.length?[el('span',{style:'width:5px;height:5px;border-radius:50%;background:var(--red)'})]:[])));
+    grid.append(cell); }
+  card.append(grid);
+  card.append(el('div',{class:'row',style:'gap:12px;margin-top:12px;justify-content:center'},
+    legendDot('var(--blue)','Daily'),legendDot('var(--purple)','Weekly'),legendDot('var(--red)','Event')));
+  v.append(card);
+}
+function legendDot(c,l){ return el('span',{class:'row',style:'gap:5px'},el('span',{style:`width:8px;height:8px;border-radius:50%;background:${c}`}),el('span',{class:'muted',style:'font-size:11px'},l)); }
+function renderList(v){
+  const A=[...D().assessments].sort((a,b)=>b.ts-a.ts);
+  if(!A.length){ v.append(el('div',{class:'empty'},'No assessments yet.')); return; }
+  const byMonth={}; A.forEach(a=>{ const k=new Date(a.ts).toLocaleDateString([],{month:'long',year:'numeric'}); (byMonth[k]=byMonth[k]||[]).push(a); });
+  Object.keys(byMonth).forEach(mk=>{ v.append(el('h3',{style:'margin:16px 0 8px'},mk));
+    byMonth[mk].forEach(a=>v.append(el('button',{class:'card',style:'width:100%;text-align:left;padding:13px',onclick:()=>go('history','a:'+a.id)},
+      el('div',{class:'row'}, el('span',{class:'tag '+a.cadence},a.cadence), el('div',{class:'spacer'}), el('span',{class:'muted',style:'font-size:12px'},fmtDT(a.ts))),
+      el('div',{class:'row',style:'margin-top:8px;gap:14px'},
+        miniStat('Fatigue',a.sliders.fatigue),miniStat('Fog',a.sliders.brainFog),miniStat('Mood',a.sliders.depression),
+        a.notes?el('span',{class:'muted',style:'font-size:11px;flex:1'},'“'+a.notes.slice(0,40)+'”'):null)))); });
+}
+function miniStat(l,val){ return el('span',{style:'font-size:12px'}, el('span',{class:'muted'},l+' '), el('b',{},val==null?'—':val)); }
+function renderAssessmentDetail(v, id){
+  const a=D().assessments.find(x=>x.id===id); if(!a){ go('history'); return; }
+  v.append(el('div',{class:'hdr'}, el('div',{class:'row'},
+    el('button',{class:'btn sm ghost',onclick:()=>go('history')},'‹ Back'),
+    el('h1',{style:'font-size:17px;margin-left:6px'},fmtDT(a.ts)))));
+  v.append(el('div',{class:'row',style:'margin-bottom:10px'}, el('span',{class:'tag '+a.cadence},a.cadence),
+    el('div',{class:'spacer'}), a.durationMs?el('span',{class:'muted',style:'font-size:12px'},'took '+fmtElapsed(Math.round(a.durationMs/1000))):null,
+    el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Delete this assessment?','',()=>{ D().assessments=D().assessments.filter(x=>x.id!==id); Store.saveNow(); go('history'); })},'Delete')));
+  const scores=Score.compute(a, D().assessments.filter(x=>x.ts<a.ts));
+  v.append(el('div',{class:'card'}, el('div',{class:'grid2'},
+    indexTile('QOL',scores.qol,'var(--qol)',''), indexTile('Cognitive',scores.cog,'var(--cog)',''))));
+  const sc=el('div',{class:'card'}); sc.append(el('h3',{style:'margin-top:0'},'Sliders'));
+  CONFIG.sliders.forEach(s=>{ if(a.sliders[s.key]==null)return; sc.append(el('div',{class:'row',style:'padding:3px 0'},
+    el('span',{style:'flex:1;font-size:13px'},s.label), el('b',{style:'color:var(--cyan)'},a.sliders[s.key]))); });
+  v.append(sc);
+  if(a.sleep&&a.sleep.totalSleepMin) v.append(el('div',{class:'card'},el('h3',{style:'margin-top:0'},'Sleep'),
+    el('p',{class:'muted'},(a.sleep.totalSleepMin/60).toFixed(1)+'h sleep'+(a.sleep.efficiency?' · '+a.sleep.efficiency+'% efficiency':''))));
+  if(a.objective) v.append(objCard(a.objective));
+  if(a.questionnaires&&Object.keys(a.questionnaires).some(k=>!k.startsWith('_'))) v.append(quizCard(a.questionnaires));
+  if(a.notes) v.append(el('div',{class:'card'},el('h3',{style:'margin-top:0'},'Notes'),el('p',{class:'muted'},a.notes)));
+}
+function objCard(o){ const c=el('div',{class:'card'}); c.append(el('h3',{style:'margin-top:0'},'Cognitive tests'));
+  const rows=[['Processing speed',o.obj_processingSpeed],['RT variability',o.obj_rtVariability],['Working memory',o.obj_workingMemory],['Attention',o.obj_attention],['Recall (of 10)',o.recall_correct]];
+  rows.forEach(([l,val])=>{ if(val==null)return; c.append(el('div',{class:'row',style:'padding:3px 0'},el('span',{style:'flex:1;font-size:13px'},l),el('b',{},Math.round(val)))); });
+  return c; }
+function quizCard(q){ const c=el('div',{class:'card'}); c.append(el('h3',{style:'margin-top:0'},'Questionnaires'));
+  if(q.dass21) c.append(el('p',{class:'muted'},'DASS-21 — Dep '+q.dass21.dep+' · Anx '+q.dass21.anx+' · Stress '+q.dass21.stress));
+  if(q.pcl5) c.append(el('p',{class:'muted'},'PCL-5 (PTSD) — '+q.pcl5.total+'/80'));
+  if(q.ders16) c.append(el('p',{class:'muted'},'DERS-16 — '+q.ders16.total+'/80'));
+  if(q.bfi10) c.append(el('p',{class:'muted'},'BFI-10 — E'+q.bfi10.extra.toFixed(1)+' A'+q.bfi10.agree.toFixed(1)+' C'+q.bfi10.consc.toFixed(1)+' N'+q.bfi10.neuro.toFixed(1)+' O'+q.bfi10.open.toFixed(1)));
+  return c; }
+const Backfill={ open(){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+  const dt=el('input',{type:'date',max:dayKey(Date.now())});
+  scrim.append(el('div',{class:'dlg'}, el('h3',{},'Backfill a past day'),
+    el('p',{class:'muted'},'Fill in a full day you missed. Confidence recovers as gaps close.'),
+    el('label',{class:'fld'},el('div',{class:'lb'},'Date'),dt),
+    el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Cancel'),
+      el('button',{class:'btn primary',onclick:()=>{ if(!dt.value)return; const [y,mo,d]=dt.value.split('-').map(Number);
+        const ts=new Date(y,mo-1,d,20,0,0).getTime(); close(); Assess.start('daily',ts); }},'Start'))));
+  scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim); } };
+
+/* ==========================================================================
+   EVENTS — life events + episode management
+   ========================================================================== */
+Views.events=(v)=>{
+  v.append(header('Events',''));
+  v.append(el('div',{class:'card'}, el('div',{class:'row'}, el('h2',{},'Major life events'), el('div',{class:'spacer'}),
+      el('button',{class:'btn sm',onclick:()=>Events.add()},'+ Add')),
+    ...( [...D().events].sort((a,b)=>b.date.localeCompare(a.date)).map(e=>el('div',{class:'row',style:'padding:9px 0;border-bottom:1px solid var(--line)'},
+      el('div',{style:'flex:1'}, el('b',{style:'font-size:14px'},e.type), el('div',{class:'muted',style:'font-size:11px'},e.date+(e.note?' · '+e.note:''))),
+      el('button',{class:'btn sm ghost',onclick:()=>{ D().events=D().events.filter(x=>x!==e); Store.saveNow(); render(); }},'✕'))) ),
+    D().events.length?null:el('p',{class:'muted'},'No events logged.')));
+  // episodes
+  v.append(el('div',{class:'card'}, el('h2',{},'Episode log (toggles)'),
+    el('p',{class:'muted',style:'margin:4px 0 10px'},'Illness, childcare, PEM crashes. Tap a time to correct it.'),
+    ...( [...D().episodes].sort((a,b)=>b.startTs-a.startTs).map(ep=>{ const t=D().toggleTypes.find(x=>x.id===ep.kind);
+      return el('div',{style:'padding:9px 0;border-bottom:1px solid var(--line)'},
+        el('div',{class:'row'}, el('span',{style:`width:9px;height:9px;border-radius:50%;background:${t?t.color:'var(--ink3)'}`}),
+          el('b',{style:'font-size:13px'},t?t.label:ep.kind), el('div',{class:'spacer'}),
+          ep.endTs==null?el('span',{class:'pill',style:'border-color:var(--green)'},'active'):el('span',{class:'muted',style:'font-size:11px'},durLabel(ep)),
+          el('button',{class:'btn sm ghost',onclick:()=>Events.editEpisode(ep)},'edit'))); }) ),
+    D().episodes.length?null:el('p',{class:'muted'},'No episodes yet.')));
+};
+function durLabel(ep){ const h=(ep.endTs-ep.startTs)/3600000; return h<24?h.toFixed(1)+'h':(h/24).toFixed(1)+'d'; }
+const Events={
+  add(){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+    const typeSel=el('select',{}); D().eventTypes.forEach(t=>typeSel.append(el('option',{},t)));
+    const dt=el('input',{type:'date',value:dayKey(Date.now())}); const note=el('input',{type:'text',placeholder:'optional note'});
+    scrim.append(el('div',{class:'dlg'}, el('h3',{},'Add event'),
+      el('label',{class:'fld'},el('div',{class:'lb'},'Type'),typeSel),
+      el('label',{class:'fld'},el('div',{class:'lb'},'Date'),dt),
+      el('label',{class:'fld'},el('div',{class:'lb'},'Note'),note),
+      el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Cancel'),
+        el('button',{class:'btn primary',onclick:()=>{ D().events.push({id:uid(),date:dt.value,type:typeSel.value,note:note.value}); Store.saveNow(); close(); render(); }},'Add'))));
+    scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim); },
+  editEpisode(ep){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+    const toLocal=ts=>{ if(ts==null)return ''; const d=new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+    const startI=el('input',{type:'datetime-local',value:toLocal(ep.startTs)});
+    const endI=el('input',{type:'datetime-local',value:toLocal(ep.endTs)});
+    scrim.append(el('div',{class:'dlg'}, el('h3',{},'Edit episode times'),
+      el('label',{class:'fld'},el('div',{class:'lb'},'Start'),startI),
+      el('label',{class:'fld'},el('div',{class:'lb'},'End (blank = still active)'),endI),
+      el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Cancel'),
+        el('button',{class:'btn ghost',style:'flex:0 0 auto',onclick:()=>{ close(); confirmDlg('Delete this episode?','',()=>{ D().episodes=D().episodes.filter(x=>x!==ep); Store.saveNow(); render(); }); }},'Delete'),
+        el('button',{class:'btn primary',onclick:()=>{ close(); confirmDlg('Save time changes?','',()=>{
+          ep.startTs=new Date(startI.value).getTime(); ep.endTs=endI.value?new Date(endI.value).getTime():null; Store.saveNow(); render(); }); }},'Save'))));
+    scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim); },
+};
+
+/* ==========================================================================
+   SETTINGS
+   ========================================================================== */
+Views.settings=(v)=>{
+  v.append(header('Settings',''));
+  // meds
+  v.append(listEditor('Medications','meds',{doses:true,purpose:true,baseline:true,unit:true}));
+  v.append(listEditor('Supplements','supplements',{doses:true,baseline:true,unit:true}));
+  v.append(toggleEditor());
+  v.append(strListEditor('Self-care activities','selfCareTypes'));
+  v.append(eventTypeEditor());
+  // reminders
+  const rc=el('div',{class:'card'}); rc.append(el('h2',{},'Reminders'));
+  rc.append(el('p',{class:'muted',style:'margin:4px 0 10px'},'In-app banners show when due. For reliable timed alerts, export a calendar (.ics) — a static web app can\'t guarantee background notifications on iOS.'));
+  D().reminders.forEach(r=>rc.append(el('div',{class:'row',style:'padding:7px 0;border-bottom:1px solid var(--line)'},
+    el('div',{style:'flex:1'},el('b',{style:'font-size:13px'},r.kind),el('div',{class:'muted',style:'font-size:11px'},r.schedule)),
+    el('div',{class:'tgl'+(r.on?' on':''),style:'padding:0;border:none;background:none',onclick:()=>{r.on=!r.on;Store.saveNow();render();}},el('div',{class:'sw'})))));
+  rc.append(el('div',{class:'row',style:'gap:8px;margin-top:10px'},
+    el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb'},'Weekly day'),weeklyDaySel()),
+    el('label',{class:'fld',style:'flex:1;margin:0'},el('div',{class:'lb'},'Weekly hour'),weeklyHourSel())));
+  rc.append(el('button',{class:'btn sm block',style:'margin-top:10px',onclick:()=>Export.ics()},'⤓ Export reminders (.ics)'));
+  v.append(rc);
+  // scoring weight
+  const wc=el('div',{class:'card'}); wc.append(el('h2',{},'Scoring'));
+  wc.append(makeSlider({key:'_alpha',label:'Subjective attenuation strength',range:10},Math.round(D().weights.alpha*10)||3,x=>{D().weights.alpha=x/10;Store.save();}));
+  wc.append(el('p',{class:'muted',style:'font-size:11px'},'How strongly your subjective state discounts objective test scores (your instruction: subjective metrics attenuate objective assessments).'));
+  v.append(wc);
+  // data
+  const dc=el('div',{class:'card'}); dc.append(el('h2',{},'Data'));
+  dc.append(el('label',{class:'fld'},el('div',{class:'lb'},'Export CSV range'),(()=>{ const s=el('select',{}); ['week','month','year','all'].forEach(x=>s.append(el('option',{},x))); s.id='csvrange'; return s; })()));
+  dc.append(el('div',{class:'grid2'},
+    el('button',{class:'btn sm',onclick:()=>Export.csv($('#csvrange').value)},'⤓ Export CSV'),
+    el('button',{class:'btn sm',onclick:()=>Export.json()},'⤓ Backup JSON'),
+    el('button',{class:'btn sm ghost',onclick:()=>Export.importJSON()},'⤒ Restore JSON'),
+    el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Erase ALL data?','This cannot be undone. Back up first.',()=>{Store.reset();go('home');})},'Erase all')));
+  v.append(dc);
+  // dev
+  const dev=el('div',{class:'card'}); dev.append(el('h3',{style:'margin-top:0'},'Developer'));
+  dev.append(el('div',{class:'grid2'},
+    el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Seed 70 days of synthetic data?','For testing charts/insights.',()=>{Dev.seed(70);go('trends');})},'Seed test data'),
+    el('button',{class:'btn sm ghost',onclick:()=>{navigator.serviceWorker&&navigator.serviceWorker.getRegistrations&&navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())); location.reload();}},'Reload')));
+  v.append(dev);
+  v.append(el('p',{class:'muted',style:'text-align:center;font-size:11px'},'NeuroTrack · all data stays on this device · schema v'+D().schemaVersion));
+};
+function weeklyDaySel(){ const s=el('select',{onchange:e=>{D().settings.weeklyDow=+e.target.value;Store.saveNow();}});
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach((d,i)=>{ const o=el('option',{value:i},d); if(i===D().settings.weeklyDow)o.selected=true; s.append(o); }); return s; }
+function weeklyHourSel(){ const s=el('select',{onchange:e=>{D().settings.weeklyHour=+e.target.value;Store.saveNow();}});
+  for(let h=6;h<=23;h++){ const o=el('option',{value:h},(h%12||12)+(h<12?'am':'pm')); if(h===D().settings.weeklyHour)o.selected=true; s.append(o); } return s; }
+function listEditor(title, coll, opts){
+  const c=el('div',{class:'card'}); c.append(el('div',{class:'row'}, el('h2',{},title), el('div',{class:'spacer'}),
+    el('button',{class:'btn sm',onclick:()=>{ D()[coll].push({id:uid(),name:'New '+title.slice(0,-1),unit:'mg',doses:[],purpose:'',baseline:false}); Store.saveNow(); render(); }},'+ Add')));
+  D()[coll].forEach(m=>{ const row=el('div',{style:'padding:10px 0;border-bottom:1px solid var(--line)'});
+    row.append(el('div',{class:'row'},
+      el('input',{type:'text',value:m.name,style:'flex:1',oninput:e=>{m.name=e.target.value;Store.save();}}),
+      el('button',{class:'btn sm ghost',onclick:()=>{ D()[coll]=D()[coll].filter(x=>x!==m); Store.saveNow(); render(); }},'✕')));
+    const line2=el('div',{class:'row',style:'margin-top:6px;gap:8px'});
+    if(opts.unit) line2.append(el('input',{type:'text',value:m.unit==null?'mg':m.unit,placeholder:'unit (mg)',style:'width:74px',oninput:e=>{m.unit=e.target.value;Store.save();}}));
+    if(opts.doses) line2.append(el('input',{type:'text',value:(m.doses||[]).join(', '),placeholder:'preset doses, comma-separated',style:'flex:1',oninput:e=>{m.doses=e.target.value.split(',').map(s=>{const t=s.trim();return t===''?null:(isNaN(+t)?t:+t);}).filter(x=>x!=null);Store.save();}}));
+    if(opts.unit||opts.doses) row.append(line2);
+    const opt=el('div',{class:'row',style:'margin-top:6px;gap:8px'});
+    if(opts.purpose) opt.append(el('input',{type:'text',value:m.purpose||'',placeholder:'purpose',style:'flex:1',oninput:e=>{m.purpose=e.target.value;Store.save();}}));
+    if(opts.baseline) opt.append(el('button',{class:'pill',style:`cursor:pointer;opacity:${m.baseline?1:.4}`,onclick:()=>{m.baseline=!m.baseline;Store.saveNow();render();}},m.baseline?'✓ baseline (hidden)':'baseline?'));
+    row.append(opt); c.append(row); });
+  return c;
+}
+function toggleEditor(){ const c=el('div',{class:'card'}); c.append(el('div',{class:'row'},el('h2',{},'Episode toggles'),el('div',{class:'spacer'}),
+    el('button',{class:'btn sm',onclick:()=>{D().toggleTypes.push({id:uid(),label:'New state',color:'#22e3ff'});Store.saveNow();render();}},'+ Add')));
+  D().toggleTypes.forEach(t=>c.append(el('div',{class:'row',style:'padding:7px 0;border-bottom:1px solid var(--line)'},
+    el('span',{style:`width:12px;height:12px;border-radius:50%;background:${t.color}`}),
+    el('input',{type:'text',value:t.label,style:'flex:1',oninput:e=>{t.label=e.target.value;Store.save();}}),
+    ['illness','childcare','pem'].includes(t.id)?el('span',{class:'muted',style:'font-size:10px'},'built-in'):el('button',{class:'btn sm ghost',onclick:()=>{D().toggleTypes=D().toggleTypes.filter(x=>x!==t);Store.saveNow();render();}},'✕'))));
+  return c; }
+function strListEditor(title, key){ const c=el('div',{class:'card'}); c.append(el('div',{class:'row'},el('h2',{},title),el('div',{class:'spacer'}),
+    el('button',{class:'btn sm',onclick:()=>{D()[key].push('New');Store.saveNow();render();}},'+ Add')));
+  D()[key].forEach((t,i)=>c.append(el('div',{class:'row',style:'padding:6px 0'},
+    el('input',{type:'text',value:t,style:'flex:1',oninput:e=>{D()[key][i]=e.target.value;Store.save();}}),
+    el('button',{class:'btn sm ghost',onclick:()=>{D()[key].splice(i,1);Store.saveNow();render();}},'✕'))));
+  return c; }
+function eventTypeEditor(){ const c=el('div',{class:'card'}); c.append(el('div',{class:'row'},el('h2',{},'Event types'),el('div',{class:'spacer'}),
+    el('button',{class:'btn sm',onclick:()=>{D().eventTypes.push('New type');Store.saveNow();render();}},'+ Add')));
+  D().eventTypes.forEach((t,i)=>c.append(el('div',{class:'row',style:'padding:6px 0'},
+    el('input',{type:'text',value:t,style:'flex:1',oninput:e=>{D().eventTypes[i]=e.target.value;Store.save();}}),
+    el('button',{class:'btn sm ghost',onclick:()=>{D().eventTypes.splice(i,1);Store.saveNow();render();}},'✕'))));
+  return c; }
+
+/* ==========================================================================
+   SOURCES — organized citations
+   ========================================================================== */
+const SOURCES={
+  'Clinical self-report instruments':[
+    ['DASS-21 — Depression Anxiety Stress Scales','Public domain (Lovibond & Lovibond, 1995). Depression, anxiety & stress subscales — "beyond the PHQ-9."','http://www2.psy.unsw.edu.au/dass/'],
+    ['PCL-5 — PTSD Checklist for DSM-5','Free/public (US Dept of Veterans Affairs, Weathers et al., 2013).','https://www.ptsd.va.gov/professional/assessment/adult-sr/ptsd-checklist.asp'],
+    ['DERS-16 — Difficulties in Emotion Regulation','Bjureberg et al., 2016, freely used in research.','https://pubmed.ncbi.nlm.nih.gov/27069377/'],
+    ['BFI-10 — Big Five Inventory (short)','Rammstedt & John, 2007. Personality traits (stable — monthly).','https://pubmed.ncbi.nlm.nih.gov/'],
+  ],
+  'Cognitive test paradigms':[
+    ['Stroop interference','Executive inhibition / processing speed under conflict.','https://en.wikipedia.org/wiki/Stroop_effect'],
+    ['Trail Making Test B','Attention & set-shifting.','https://en.wikipedia.org/wiki/Trail_Making_Test'],
+    ['Symbol Digit Modalities','Processing speed — an inflammation-sensitive domain.','https://pubmed.ncbi.nlm.nih.gov/'],
+    ['Digit span','Working memory.','https://en.wikipedia.org/wiki/Memory_span'],
+    ['Reaction-time intra-individual variability (IIV)','An early CNS-insult marker (NP-SLE, MS).','https://pubmed.ncbi.nlm.nih.gov/25716749/'],
+  ],
+  'Neuroinflammation extrapolation':[
+    ['Dantzer et al., 2008 — sickness behavior → depression','Cytokines drive fatigue, anhedonia, cognitive slowing.','https://www.nature.com/articles/nrn2297'],
+    ['Miller & Raison, 2016 — inflammation & depression','Nat Rev Immunol.','https://www.nature.com/articles/nri.2015.5'],
+    ['UK Biobank/NESDA, 2021 — somatic-symptom specificity','Inflammation maps to fatigue/sleep/appetite/anhedonia, not guilt.','https://www.nature.com/articles/s41380-021-01188-w'],
+    ['Berger 2016 — IVIG "wear-off" at end of cycle','Justifies days-since-IVIG (IgG half-life ~3–4 wks).','https://pmc.ncbi.nlm.nih.gov/articles/PMC4792336/'],
+    ['Anti-NMDAR encephalitis relapse review','Flare symptomatology & recurrence.','https://pmc.ncbi.nlm.nih.gov/articles/PMC3705219/'],
+    ['Thermoregulation & dysautonomia','Mechanistic basis (weak/anecdotal) for "ice brain."','https://www.sciencedirect.com/science/article/pii/S1566070216300017'],
+  ],
+  'Method notes':[
+    ['Spearman rank correlation','Robust to skew/outliers; used for symptom pairs.','https://en.wikipedia.org/wiki/Spearman%27s_rank_correlation_coefficient'],
+    ['Bayesian shrinkage toward priors','Small-n estimates pulled toward literature expectation; data dominates as n grows.','https://en.wikipedia.org/wiki/Shrinkage_(statistics)'],
+    ['EWMA smoothing','Used for the NII trend line.','https://pmc.ncbi.nlm.nih.gov/articles/PMC10248291/'],
+  ],
+};
+Views.sources=(v)=>{
+  v.append(header('Sources',''));
+  v.append(el('p',{class:'muted',style:'margin-top:0'},'The evidence behind the assessments and the neuroinflammation estimate. Nothing here is hidden in code.'));
+  const lit=D().literatureCache;
+  if(lit&&lit.items&&lit.items.length){ const c=el('div',{class:'card'});
+    c.append(el('div',{class:'row'},el('h2',{},'Recent literature'),el('div',{class:'spacer'}),el('span',{class:'muted',style:'font-size:11px'},'fetched '+fmtD(lit.fetched))));
+    lit.items.forEach(it=>c.append(el('a',{href:'https://europepmc.org/article/'+it.src+'/'+it.id,target:'_blank',style:'display:block;padding:8px 0;border-bottom:1px solid var(--line)'},
+      el('div',{style:'font-size:13px;color:var(--ink)'},it.title), el('div',{class:'muted',style:'font-size:11px'},(it.authors||'').slice(0,60)+' · '+it.year))));
+    v.append(c); }
+  v.append(el('button',{class:'btn sm block',style:'margin-bottom:14px',onclick:()=>Lit.refresh(v)},'↻ Refresh literature (Europe PMC)'));
+  Object.keys(SOURCES).forEach(sec=>{ const c=el('div',{class:'card'}); c.append(el('h2',{},sec));
+    SOURCES[sec].forEach(([t,d,u])=>c.append(el('a',{href:u,target:'_blank',style:'display:block;padding:9px 0;border-bottom:1px solid var(--line)'},
+      el('div',{style:'font-size:13.5px;font-weight:600;color:var(--ink)'},t), el('div',{class:'muted',style:'font-size:11.5px'},d))));
+    v.append(c); });
+  v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'⚕️'),
+    el('div',{class:'bt'}, el('b',{},'Not medical advice'), el('span',{},'This is a personal tracking tool, not a diagnostic device.'))));
+};
+
+/* ==========================================================================
+   EXPORT — CSV / JSON / ICS
+   ========================================================================== */
+const Export={
+  download(name,text,type){ const blob=new Blob([text],{type:type||'text/plain'}); const url=URL.createObjectURL(blob);
+    const a=el('a',{href:url,download:name}); document.body.append(a); a.click(); setTimeout(()=>{a.remove();URL.revokeObjectURL(url);},500); },
+  csv(range){ const now=Date.now(); const cut={week:7,month:30,year:365,all:1e9}[range]*DAY;
+    const rows=D().assessments.filter(a=>now-a.ts<=cut).sort((a,b)=>a.ts-b.ts);
+    const sk=CONFIG.sliders.map(s=>s.key);
+    const head=['date','time','cadence',...sk,'mentalExert','physicalExert','sleepMin','sleepEff','mealCount','mealQuality','daysSinceIVIG','qol','cog','nii','obj_procSpeed','obj_rtVar','dass_dep','dass_anx','dass_stress','notes'];
+    const scores=Score.seriesAll(); const nii=Neuro.series();
+    const esc=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+    const lines=[head.join(',')];
+    rows.forEach(a=>{ const sc=scores.find(x=>x.id===a.id)||{}; const nv=nii.find(x=>x.id===a.id)||{};
+      const q=a.questionnaires||{};
+      lines.push([dayKey(a.ts),fmtT(a.ts),a.cadence,...sk.map(k=>a.sliders[k]==null?'':a.sliders[k]),
+        a.exertion&&a.exertion.mental,a.exertion&&a.exertion.physical,a.sleep&&a.sleep.totalSleepMin,a.sleep&&a.sleep.efficiency,
+        a.meals&&a.meals.count,a.meals&&a.meals.quality,Derive.daysSinceIVIG(a.ts),
+        sc.qol!=null?Math.round(sc.qol):'',sc.cog!=null?Math.round(sc.cog):'',nv.nii!=null?Math.round(nv.nii):'',
+        a.objective&&Math.round(a.objective.obj_processingSpeed),a.objective&&Math.round(a.objective.obj_rtVariability),
+        q.dass21&&q.dass21.dep,q.dass21&&q.dass21.anx,q.dass21&&q.dass21.stress,esc(a.notes)].join(',')); });
+    this.download('neurotrack-'+range+'-'+dayKey(now)+'.csv',lines.join('\n'),'text/csv'); toast('CSV exported'); },
+  json(){ this.download('neurotrack-backup-'+dayKey(Date.now())+'.json',JSON.stringify(D(),null,2),'application/json'); toast('Backup exported'); },
+  importJSON(){ const inp=el('input',{type:'file',accept:'.json'}); inp.addEventListener('change',()=>{ const f=inp.files[0]; if(!f)return;
+    const rd=new FileReader(); rd.onload=()=>{ try{ const obj=JSON.parse(rd.result); if(!obj.schemaVersion)throw 0;
+      confirmDlg('Restore this backup?','Replaces all current data.',()=>{ Store.load(obj); go('home'); toast('Restored'); }); }catch(e){ toast('Invalid backup file'); } };
+    rd.readAsText(f); }); inp.click(); },
+  ics(){ const dtstamp=new Date().toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
+    const dow=['SU','MO','TU','WE','TH','FR','SA'][D().settings.weeklyDow]; const wh=String(D().settings.weeklyHour).padStart(2,'0');
+    let ics='BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//NeuroTrack//EN\n';
+    const ev=(uidx,summ,rrule,hhmm)=>{ ics+='BEGIN:VEVENT\nUID:'+uidx+'@neurotrack\nDTSTAMP:'+dtstamp+'\nDTSTART:20240101T'+hhmm+'00\nRRULE:'+rrule+'\nSUMMARY:'+summ+'\nBEGIN:VALARM\nTRIGGER:-PT0M\nACTION:DISPLAY\nDESCRIPTION:'+summ+'\nEND:VALARM\nEND:VEVENT\n'; };
+    if(D().reminders.find(r=>r.id==='moodWake'&&r.on)) ev('moodwake','NeuroTrack — morning mood + wake glucose','FREQ=DAILY','0800');
+    if(D().reminders.find(r=>r.id==='daily'&&r.on)) ev('daily','NeuroTrack — end-of-day mood + check-in','FREQ=DAILY','2000');
+    if(D().reminders.find(r=>r.id==='weekly'&&r.on)) ev('weekly','NeuroTrack — weekly FULL assessment','FREQ=WEEKLY;BYDAY='+dow, wh+'00');
+    if(D().reminders.find(r=>r.id==='glucose'&&r.on)) ['0700','1200','1600','2000','2230'].forEach((t,i)=>ev('glu'+i,'NeuroTrack — glucose reading','FREQ=DAILY',t));
+    if(D().reminders.find(r=>r.id==='bp'&&r.on)) ev('bp','NeuroTrack — blood pressure','FREQ=DAILY','0900');
+    ics+='END:VCALENDAR';
+    this.download('neurotrack-reminders.ics',ics,'text/calendar'); toast('Calendar exported — open to add alarms'); },
+};
+
+/* ==========================================================================
+   BOOT
+   ========================================================================== */
+function boot(){ render();
+  // register service worker for offline use (no-op on file://; works on GitHub Pages)
+  if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+}
+document.addEventListener('DOMContentLoaded',boot);
+</script>
+</body>
+</html>

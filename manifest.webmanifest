@@ -1,0 +1,19 @@
+{
+  "name": "NeuroTrack",
+  "short_name": "NeuroTrack",
+  "description": "Personal neurological function tracker",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#07070d",
+  "theme_color": "#07070d",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512'%3E%3Crect width='512' height='512' rx='112' fill='%2307070d'/%3E%3Ccircle cx='256' cy='256' r='148' fill='none' stroke='%23ff4d9d' stroke-width='20'/%3E%3Ccircle cx='256' cy='256' r='92' fill='none' stroke='%2322e3ff' stroke-width='20'/%3E%3Ccircle cx='256' cy='256' r='34' fill='%233dff9a'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
