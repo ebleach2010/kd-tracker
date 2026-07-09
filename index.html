@@ -267,6 +267,7 @@ const CONFIG = {
     {id:'illness',label:'Actively sick',color:'#ff5c6b'},
     {id:'childcare',label:'Child caretaking',color:'#ffcf5c'},
     {id:'pem',label:'PEM crash',color:'#b06bff'},
+    {id:'icebrain',label:'Ice brain',color:'#22e3ff'},
   ],
   defaultEvents:['Relapse','Hospital stay','Major dissociative episode','PTSD flashback','Death in the family','Move'],
   defaultSelfCare:['Meditated','Cold plunge','Nap x1','Nap x2','Nap x3','Designated resting','Recreational activities'],
@@ -371,6 +372,9 @@ const Store = (()=>{
   // backfill cognitive-enhancer PK metadata onto existing known meds
   (data.meds||[]).forEach(m=>{ const def=CONFIG.defaultMeds.find(x=>x.id===m.id);
     if(def){ if(m.cogEnhancer==null) m.cogEnhancer=def.cogEnhancer||false; if(m.pk==null&&def.pk) m.pk=def.pk; } });
+  // add any new default state-toggles (e.g. ice brain) for existing users
+  data.toggleTypes=data.toggleTypes||[];
+  CONFIG.defaultToggles.forEach(dt=>{ if(!data.toggleTypes.some(t=>t.id===dt.id)) data.toggleTypes.push({...dt}); });
   let saveT;
   const save=()=>{ clearTimeout(saveT); saveT=setTimeout(()=>{
     try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch(e){ console.warn('save failed',e); }
@@ -792,6 +796,9 @@ const Assess = {
   next(){ if(this.active.step<this.active.steps.length-1){ this.active.step++; this.render(); window.scrollTo(0,0);} },
   prev(){ if(this.active.step>0){ this.active.step--; this.render(); window.scrollTo(0,0);} },
   quit(){ this.active=null; go('home'); },
+  // save what's entered so far, marked as a partial entry (lightly weighted covariate)
+  finishPartial(){ confirmDlg('Save what you have and stop?','Marked "too unwell to finish." Your entered data is kept and lightly weighted — it does NOT floor your scores like a crash day.',()=>{
+    this.active.draft.partial=true; this.finish(); }); },
   finish(){
     const d=this.active.draft;
     d.durationMs=Date.now()-this.active.startTs;
@@ -799,7 +806,7 @@ const Assess = {
     Store.saveNow();
     this.active=null;
     go('history');
-    toast('Assessment saved ✓');
+    toast(d.partial?'Partial entry saved ✓':'Assessment saved ✓');
   },
   render(){
     const a=this.active; if(!a)return;
@@ -807,8 +814,9 @@ const Assess = {
     const v=$('#view'); v.innerHTML=''; v.className='fade';
     // proctor bar
     const elapsed=Math.floor((Date.now()-a.startTs)/1000);
-    const bar=el('div',{class:'row',style:'margin:2px 0 12px'},
+    const bar=el('div',{class:'row',style:'margin:2px 0 12px;gap:8px'},
       el('button',{class:'btn sm ghost',onclick:()=>this.quit()},'✕'),
+      a.step>0 && a.cadence!=='quick' ? el('button',{class:'btn sm ghost',style:'font-size:11px;color:#ffeec2;border-color:rgba(255,207,92,.4)',onclick:()=>this.finishPartial()},'Too unwell to finish') : null,
       el('div',{class:'spacer'}),
       el('span',{class:'pill'}, el('span',{class:'tag '+a.cadence},a.cadence+(a.variant?' · '+a.variant.toUpperCase():'')),
         ' ⏱ ', el('span',{id:'ptimer'},fmtElapsed(elapsed))),
@@ -1478,6 +1486,8 @@ const Insights = {
         if(sw){ v['med_'+m.id+'_afterStop']=sw.afterStop; v['med_'+m.id+'_streakLen']=sw.streakLen; } });
       // "too unwell to log" crash day (heavily negative)
       v.tooUnwell=list.some(a=>a.tooUnwell)?1:0;
+      // "too unwell to finish" — partial entry, a light covariate (may reflect fatigue, not inflammation)
+      v.partialDay=list.some(a=>a.partial)?1:0;
       // self-care (binary per activity today)
       D().selfCareTypes.forEach(item=>{ const did=list.some(a=>(a.selfCare||[]).includes(item));
         v['sc_'+item]=did?1:0; });
@@ -1514,6 +1524,7 @@ const Insights = {
     V.glucoseTrough={label:'Glucose trough (daily min)',kind:'predictor'}; V.glucoseRange={label:'Glucose swing (max−min)',kind:'predictor'};
     V.daysSinceIVIG={label:'Days since IVIG',kind:'predictor'};
     V.tooUnwell={label:'Too unwell to log (crash day)',kind:'predictor'};
+    V.partialDay={label:'Partial entry (too unwell to finish)',kind:'predictor'};
     V.moodWake={label:'Morning mood',kind:'predictor'}; V.moodEnd={label:'End-of-day mood',kind:'symptom'};
     V.moodDelta={label:'Mood shift (AM→PM)',kind:'predictor'};
     D().selfCareTypes.forEach(item=>{ V['sc_'+item]={label:item,kind:'predictor'}; });
@@ -2092,6 +2103,7 @@ function renderAssessmentDetail(v, id){
       el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Delete this crash day?','',()=>{ D().assessments=D().assessments.filter(x=>x.id!==id); Store.saveNow(); go('history'); })},'Delete')),
     el('p',{class:'muted',style:'margin-bottom:0'},'Marked "too unwell to input data." Counted as a heavily-weighted low day (QOL & cognition floored, neuroinflammation elevated).'))); return; }
   v.append(el('div',{class:'row',style:'margin-bottom:10px'}, el('span',{class:'tag '+a.cadence},a.cadence+(a.variant?' '+a.variant.toUpperCase():'')),
+    a.partial?el('span',{class:'tag',style:'background:rgba(255,207,92,.16);color:var(--amber)'},'partial'):null,
     el('div',{class:'spacer'}), a.durationMs?el('span',{class:'muted',style:'font-size:12px'},'took '+fmtElapsed(Math.round(a.durationMs/1000))):null,
     el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Delete this assessment?','',()=>{ D().assessments=D().assessments.filter(x=>x.id!==id); Store.saveNow(); go('history'); })},'Delete')));
   const scores=Score.compute(a, D().assessments.filter(x=>x.ts<a.ts));
