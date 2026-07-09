@@ -341,7 +341,7 @@ const Store = (()=>{
   const KEY='neuro_v1';
   const fresh=()=>({
     schemaVersion:3,
-    settings:{ weeklyDow:4, weeklyHour:19, weeklyAmHour:8, calibrateMin:20, remindersOn:true },
+    settings:{ weeklyDow:4, weeklyHour:19, weeklyAmHour:7, calibrateMin:20, remindersOn:true },
     meds:JSON.parse(JSON.stringify(CONFIG.defaultMeds)),
     supplements:JSON.parse(JSON.stringify(CONFIG.defaultSupps)),
     toggleTypes:JSON.parse(JSON.stringify(CONFIG.defaultToggles)),
@@ -350,15 +350,15 @@ const Store = (()=>{
     reminders:[
       {id:'moodWake',kind:'Morning mood + wake glucose',schedule:'daily@08:00',on:true},
       {id:'daily',kind:'End-of-day: mood + check-in + 8pm glucose',schedule:'daily@20:00',on:true},
-      {id:'weeklyAm',kind:'Weekly full — morning baseline (Thu, pre-med)',schedule:'weekly-am',on:true},
-      {id:'weekly',kind:'Weekly full — evening (Thu)',schedule:'weekly-pm',on:true},
+      {id:'weeklyAm',kind:'Full baseline reminder — Thu 7am',schedule:'weekly-am',on:true},
+      {id:'weekly',kind:'Full baseline reminder — Thu 7pm',schedule:'weekly-pm',on:true},
       {id:'glucose',kind:'Glucose readings',schedule:'wake/noon/4pm/8pm/bed',on:true},
       {id:'bp',kind:'Blood pressure',schedule:'daily',on:true},
     ],
     weights:{alpha:.25}, // subjective-attenuation strength
     priors:JSON.parse(JSON.stringify(CONFIG.priors)),
     assessments:[], medLogs:[], supplementLogs:[], vitals:[], moodLogs:[],
-    events:[], episodes:[], regimen:[], regimenLog:[],
+    events:[], episodes:[], regimen:[], regimenLog:[], skips:[],
     literatureCache:null, prioReviewed:null,
   });
   let data;
@@ -486,6 +486,38 @@ function timeDateEditor(title, initTs, onConfirm){
     el('div',{class:'acts'},
       el('button',{class:'btn',style:'flex:1;border-color:var(--red);color:#ffd7dc',onclick:close},'✕ Cancel'),
       el('button',{class:'btn',style:'flex:1;border-color:var(--green);color:#d7ffe9;background:linear-gradient(180deg,rgba(61,255,154,.22),transparent)',onclick:()=>{ close(); onConfirm(ts); }},'✓ Confirm')));
+  scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim);
+}
+function pad2(n){return String(n).padStart(2,'0');}
+/* Episode editor — adjust BOTH start and end via Start/End + Time/Date tabs, green/red. */
+function episodeTimesEditor(label, ep, onSave){
+  const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+  let startTs=ep.startTs, endTs=ep.endTs, which='start', tab='time';
+  const dlg=el('div',{class:'dlg'}); const body=el('div',{});
+  const draw=()=>{ body.innerHTML='';
+    body.append(el('div',{class:'seg',style:'display:flex;width:100%;margin-bottom:10px'},
+      el('button',{class:which==='start'?'on':'',style:'flex:1',onclick:()=>{which='start';draw();}},'Start'),
+      el('button',{class:which==='end'?'on':'',style:'flex:1',onclick:()=>{which='end';draw();}},'End')));
+    if(which==='end') body.append(el('label',{class:'row',style:'gap:8px;margin-bottom:10px'},
+      el('input',{type:'checkbox',checked:endTs==null,onchange:e=>{ endTs=e.target.checked?null:Date.now(); draw(); }}),
+      el('span',{class:'muted'},'Still active (no end time)')));
+    if(!(which==='end'&&endTs==null)){
+      const ts=which==='start'?startTs:endTs;
+      body.append(el('div',{class:'seg',style:'display:flex;width:100%;margin-bottom:10px'},
+        el('button',{class:tab==='time'?'on':'',style:'flex:1',onclick:()=>{tab='time';draw();}},'Time'),
+        el('button',{class:tab==='date'?'on':'',style:'flex:1',onclick:()=>{tab='date';draw();}},'Date')));
+      if(tab==='time'){ const d=new Date(ts); body.append(el('label',{class:'fld'},el('div',{class:'lb'},'Time'),
+        el('input',{type:'time',value:pad2(d.getHours())+':'+pad2(d.getMinutes()),onchange:e=>{ if(!e.target.value)return; const [h,m]=e.target.value.split(':').map(Number); const nd=new Date(ts); nd.setHours(h,m,0,0); which==='start'?startTs=nd.getTime():endTs=nd.getTime(); draw(); }}))); }
+      else body.append(el('label',{class:'fld'},el('div',{class:'lb'},'Date'),
+        el('input',{type:'date',value:dayKey(ts),max:dayKey(Date.now()),onchange:e=>{ if(!e.target.value)return; const [y,mo,dd]=e.target.value.split('-').map(Number); const nd=new Date(ts); nd.setFullYear(y,mo-1,dd); which==='start'?startTs=nd.getTime():endTs=nd.getTime(); draw(); }})));
+    }
+    body.append(el('div',{class:'muted',style:'font-size:12px;margin-top:4px'},'Start '+fmtDT(startTs)+(endTs?(' → End '+fmtDT(endTs)):' → active')));
+  };
+  draw();
+  dlg.append(el('h3',{},label), body,
+    el('div',{class:'acts'},
+      el('button',{class:'btn',style:'flex:1;border-color:var(--red);color:#ffd7dc',onclick:close},'✕ Cancel'),
+      el('button',{class:'btn',style:'flex:1;border-color:var(--green);color:#d7ffe9;background:linear-gradient(180deg,rgba(61,255,154,.22),transparent)',onclick:()=>{ close(); onSave(startTs,endTs); }},'✓ Confirm')));
   scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim);
 }
 function toast(msg){
@@ -906,6 +938,11 @@ const Assess = {
     b.append(out); this.deriveSleep(d);
     const q=CONFIG.sliders.find(s=>s.key==='sleepQuality');
     b.append(makeSlider(q, d.sliders.sleepQuality, v=>d.sliders.sleepQuality=v));
+    // morning: nicotine framed as overnight use (same 4-interval scale)
+    if(this.active.variant==='am'){
+      const nic=CONFIG.sliders.find(s=>s.key==='nicotine');
+      b.append(makeSlider({...nic,label:'Did you use nicotine in the night / last night?'}, d.sliders.nicotine, v=>d.sliders.nicotine=v));
+    }
     b.append(this.footer());
   },
   deriveSleep(d){ const s=d.sleep; const out=$('#sleepderive');
@@ -915,19 +952,23 @@ const Assess = {
       if(out) out.textContent=`Total sleep: ${(mins/60).toFixed(1)}h`+(s.efficiency?` · efficiency ${s.efficiency}%`:''); }
     else if(out) out.textContent='';
   },
-  step_sliders(b, step){ const d=this.active.draft;
+  tensePhrase(){ const a=this.active; if(!a)return 'today'; if(a.cadence==='quick')return 'right now'; if(a.variant==='am')return 'this morning'; return 'overall today'; },
+  step_sliders(b, step){ const d=this.active.draft; const tense=this.tensePhrase();
+    if(this.active.cadence!=='quick' && this.active.variant!=='am' && step.from===0)
+      b.append(el('p',{class:'muted',style:'margin-top:0'},'Rate each as an average across today.'));
     const cfgs = step.keys ? step.keys.map(k=>CONFIG.sliders.find(s=>s.key===k)).filter(Boolean)
                            : CONFIG.sliders.slice(step.from,step.to);
     cfgs.forEach(c=>{
       if(c.key==='nicotine'||c.key==='sleepQuality')return; // shown elsewhere
-      b.append(makeSlider(c, d.sliders[c.key], v=>d.sliders[c.key]=v));
+      const lab = /\)$/.test(c.label) ? c.label : c.label+' ('+tense+')';
+      b.append(makeSlider({...c,label:lab}, d.sliders[c.key], v=>d.sliders[c.key]=v));
     });
     b.append(this.footer());
   },
   step_quick(b){ const d=this.active.draft;
-    b.append(el('p',{class:'muted',style:'margin-top:0'},'A fast read on how you are right now — logged at '+fmtT(d.ts)+'. Do these any time of day.'));
+    b.append(el('p',{class:'muted',style:'margin-top:0'},'A snapshot of how you are right now — logged at '+fmtT(d.ts)+'. Do these any time of day.'));
     b.append(makeSlider({key:'moodEnd',label:'Overall wellbeing right now (terrible → amazing)'}, d.sliders.moodEnd, v=>d.sliders.moodEnd=v));
-    ['agitation','iceBrain','fatigue','brainFog','pem','anxiety','overstim','depression'].forEach(k=>{ const c=CONFIG.sliders.find(s=>s.key===k); if(c) b.append(makeSlider(c,d.sliders[k],v=>d.sliders[k]=v)); });
+    ['agitation','iceBrain','fatigue','brainFog','pem','anxiety','overstim','depression'].forEach(k=>{ const c=CONFIG.sliders.find(s=>s.key===k); if(c) b.append(makeSlider({...c,label:c.label+' (right now)'},d.sliders[k],v=>d.sliders[k]=v)); });
     b.append(this.footer());
   },
   step_moodwake(b){ const d=this.active.draft;
@@ -1204,36 +1245,21 @@ Views.home=(v)=>{
   v.append(header('NeuroTrack','post-AE function tracker'));
   // due banners — comprehensive Morning / Evening assessments (daily), + Thursday full baseline
   const now=new Date(); const isWDay=now.getDay()===D().settings.weeklyDow; const hr=now.getHours();
-  // Full baseline (Thursday, cognitive battery) takes priority when due
-  if(isWDay && hr<12 && !hasToday('weekly','am'))
+  // Full baseline (~45 min, cognitive battery) — reminder on the weekly day; takeable ANY time
+  if(isWDay && !hasToday('weekly'))
     v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'🧪'),
-      el('div',{class:'bt'}, el('b',{},'Full baseline — morning (pre-med)'), el('span',{},'Thursday · cognitive battery + questionnaires · before cognitive meds')),
-      el('button',{class:'btn pink sm',onclick:()=>Assess.start('weekly',null,'am')},'Start')));
-  else if(hr<12 && !hasToday('daily','am'))
+      el('div',{class:'bt'}, el('b',{},'Full baseline due today'), el('span',{},'~45 min · cognitive battery + questionnaires · reminders 7am & 7pm')),
+      el('button',{class:'btn pink sm',onclick:()=>Assess.start('weekly')},'Start')));
+  if(hr<12 && !hasToday('daily','am'))
     v.append(el('div',{class:'banner due'}, el('span',{class:'bic'},'🌅'),
       el('div',{class:'bt'}, el('b',{},'Morning assessment'), el('span',{},'Comprehensive waking check-in · sleep, symptoms, mood')),
       el('button',{class:'btn sm',onclick:()=>Assess.start('daily',null,'am')},'Start')));
-  if(isWDay && hr>=12 && !hasToday('weekly','pm'))
-    v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'🧪'),
-      el('div',{class:'bt'}, el('b',{},'Full baseline — evening'), el('span',{},'Thursday evening · cognitive battery + questionnaires')),
-      el('button',{class:'btn pink sm',onclick:()=>Assess.start('weekly',null,'pm')},'Start')));
-  else if(hr>=17 && !hasToday('daily','pm'))
+  if(hr>=17 && !hasToday('daily','pm'))
     v.append(el('div',{class:'banner due'}, el('span',{class:'bic'},'🌙'),
       el('div',{class:'bt'}, el('b',{},'Evening assessment'), el('span',{},'Comprehensive end-of-day · symptoms, meals, self-care, mood')),
       el('button',{class:'btn sm',onclick:()=>Assess.start('daily',null,'pm')},'Start')));
 
-  // headline indices
-  const s=Score.seriesAll(); const latest=s[s.length-1]; const nii=Neuro.series();
-  v.append(el('div',{class:'card'},
-    el('div',{class:'row'}, el('h2',{},'Today'), el('div',{class:'spacer'}),
-      el('button',{class:'btn sm ghost',onclick:()=>go('trends')},'Trends →')),
-    el('div',{class:'grid2',style:'margin-top:6px'},
-      indexTile('QOL', latest?latest.qol:null, 'var(--qol)', 'higher = better'),
-      indexTile('Cognitive', latest?latest.cog:null, 'var(--cog)', 'higher = better')),
-    el('div',{style:'margin-top:10px'},
-      indexTile('Neuroinflammation (NII)', nii.length&&nii[nii.length-1].nii!=null?nii[nii.length-1].nii:null,
-        'var(--nii)', nii.calibrated?'higher = worse · symptom proxy':'calibrating — need ~'+D().settings.calibrateMin+' assessments', true))));
-
+  const nii=Neuro.series();
   // quick start
   v.append(el('div',{class:'card'},
     el('h2',{},'Log now'),
@@ -1241,12 +1267,13 @@ Views.home=(v)=>{
     el('div',{class:'grid2',style:'margin-top:8px'},
       el('button',{class:'btn',onclick:()=>Assess.start('daily',null,'am')},'🌅 Morning assessment'),
       el('button',{class:'btn',onclick:()=>Assess.start('daily',null,'pm')},'🌙 Evening assessment'),
-      el('button',{class:'btn ghost',onclick:()=>Assess.start('weekly',null,'am')},'🧪 Full baseline (AM)'),
-      el('button',{class:'btn ghost',onclick:()=>Assess.start('weekly',null,'pm')},'🧪 Full baseline (PM)'),
+      el('button',{class:'btn ghost',onclick:()=>Assess.start('weekly')},'🧪 Full baseline (~45 min)'),
       el('button',{class:'btn ghost',onclick:()=>QuickLog.open('vital')},'🩸 Glucose / BP'),
-      el('button',{class:'btn ghost',onclick:()=>go('meds')},'💊 Meds')),
-    el('button',{class:'btn block',style:'margin-top:10px;border-color:rgba(255,92,107,.5);color:#ffd7dc',
-      onclick:()=>logUnwell()}, '😞 Too unwell to log today')));
+      el('button',{class:'btn ghost',onclick:()=>go('meds')},'💊 Meds'),
+      el('button',{class:'btn ghost',onclick:()=>MoodLog.openWake()},'🌅 Morning mood')),
+    el('div',{class:'row',style:'gap:8px;margin-top:10px'},
+      el('button',{class:'btn',style:'flex:1;border-color:rgba(255,92,107,.5);color:#ffd7dc',onclick:()=>logUnwell()}, '😞 Too unwell'),
+      el('button',{class:'btn',style:'flex:1;border-color:rgba(255,207,92,.5);color:#ffeec2',onclick:()=>logBusy()}, '😐 Too busy'))));
 
   // episode toggles — flip the switch to start/stop; tap the right side to adjust the time/date
   v.append(el('div',{class:'card'},
@@ -1257,9 +1284,8 @@ Views.home=(v)=>{
       const editable=open||lastClosed;
       return el('div',{class:'tgl'+(open?' on':'')},
         el('div',{class:'sw',style:'cursor:pointer',onclick:()=>{ Toggles.flip(t.id); render(); }}),
-        el('div',{class:'tinfo',style:editable?'cursor:pointer':'',onclick:()=>{ if(!editable)return;
-            if(open) timeDateEditor('Adjust "'+t.label+'" start', open.startTs, ts=>{ open.startTs=ts; Store.saveNow(); render(); });
-            else timeDateEditor('Adjust "'+t.label+'" end', lastClosed.endTs, ts=>{ lastClosed.endTs=ts; Store.saveNow(); render(); }); }},
+        el('div',{class:'tinfo',style:editable?'cursor:pointer':'',onclick:()=>{ const ep=open||lastClosed; if(!ep)return;
+            episodeTimesEditor('"'+t.label+'" times', ep, (s,e)=>{ ep.startTs=s; ep.endTs=e; Store.saveNow(); render(); }); }},
           el('b',{},t.label),
           el('span',{}, open?('On since '+fmtDT(open.startTs)+'  ›') : ('Off'+(lastClosed?(' · ended '+fmtDT(lastClosed.endTs)+'  ›'):''))))); })));
 
@@ -1281,6 +1307,9 @@ function hasToday(cadence,variant){ const t=dayKey(Date.now()); return D().asses
 function logUnwell(){ const ts=Date.now();
   D().assessments.push({id:uid(),ts,cadence:'unwell',tooUnwell:true,sliders:{},exertion:{},sleep:{},meals:{},meds:[],supplements:[],glucose:[],selfCare:[],noteTags:[],notes:'Too unwell to input data'});
   Store.saveNow(); toast('Logged as a crash day — rest up 🤍'); render(); }
+// "too busy to log" — a neutral skipped-day marker that does NOT affect any data
+function logBusy(){ const ts=Date.now(); if((D().skips||[]).some(s=>dayKey(s.ts)===dayKey(ts))){ toast('Today already marked busy'); return; }
+  D().skips.push({id:uid(),ts,kind:'busy'}); Store.saveNow(); toast('Marked too busy — no data affected'); render(); }
 const MoodLog={ openWake(forTs){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
   const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'Morning mood'+(forTs?' · '+fmtD(forTs):'')));
   let val=5; dlg.append(makeSlider({key:'moodWake',label:'How do you feel on waking? (terrible → amazing)'},5,v=>val=v));
@@ -1516,7 +1545,68 @@ const Insights = {
     const best={};
     findings.forEach(f=>{ const k=f.pk+'|'+f.ok; if(!best[k]||f.conf>best[k].conf)best[k]=f; });
     const list=Object.values(best).sort((a,b)=>b.conf-a.conf);
-    return { locked:false, nDays, spanDays:Math.round(spanDays), findings:list, missedDays:this.gapDays(vecs) };
+    const interactions=this.findInteractions(vecs, V, best);
+    const pathways=this.findPathways(list, V);
+    return { locked:false, nDays, spanDays:Math.round(spanDays), findings:list, interactions, pathways, missedDays:this.gapDays(vecs) };
+  },
+  // COMPOUND / INTERACTION effects: does exposure A *together with* B predict an outcome
+  // beyond either alone? (e.g. caffeine + Concerta → agitation). Bounded to a curated set.
+  findInteractions(vecs, V, mainBest){
+    const exposures=Object.keys(V).filter(k=> k.startsWith('cogmed_') || (k.startsWith('ep_')&&k.endsWith('_active'))
+      || (k.startsWith('rx_')&&k.endsWith('_active')) || k==='nicotine' || (k.startsWith('med_')&&k.endsWith('_change')))
+      .filter(k=>vecs.some(v=>v[k]!=null));
+    const outs=['agitation','anxiety','sleepMin','sleepQuality','brainFog','fatigue','pem','cogFatigue','iceBrain','depression','overstim']
+      .filter(k=>V[k]&&vecs.some(v=>v[k]!=null));
+    const mean=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
+    // binarize an exposure: counts/binary flags at >0, graded values at their median
+    // absence of a count/flag exposure means 0 (didn't happen), not "missing"
+    const binOf=k=>{ const vals=vecs.map(v=>v[k]).filter(x=>x!=null); if(vals.length<4)return null;
+      const distinct=new Set(vals.map(x=>Math.round(x*100)));
+      const thr = distinct.size<=3 ? 0 : Stats.median(vals);
+      return v=> ((v[k]==null?0:v[k])>thr?1:0); };
+    const out=[];
+    for(let i=0;i<exposures.length;i++) for(let j=i+1;j<exposures.length;j++){
+      const A=exposures[i], B=exposures[j]; const bA=binOf(A), bB=binOf(B); if(!bA||!bB) continue;
+      for(const O of outs){
+        const g={none:[],a:[],b:[],both:[]};
+        vecs.forEach(v=>{ const o=v[O]; if(o==null)return; const a=bA(v),b=bB(v);
+          (a&&b?g.both:a?g.a:b?g.b:g.none).push(+o); });
+        if(g.both.length<4 || g.a.length<2 || g.b.length<2) continue; // need real co-occurrence + singles
+        const allO=vecs.map(v=>v[O]).filter(x=>x!=null); const sd=Stats.sd(allO)||1;
+        const mBoth=mean(g.both), mA=mean(g.a), mB=mean(g.b);
+        // synergy = combo exceeds (or falls below) BOTH single-exposure groups in the same direction
+        const liftA=mBoth-mA, liftB=mBoth-mB;
+        if(Math.sign(liftA)!==Math.sign(liftB)) continue;
+        const lift=Math.min(Math.abs(liftA),Math.abs(liftB)); const effect=lift/sd;
+        if(effect<0.4) continue;
+        const conf=clamp(Math.round((0.55*Math.min(1,effect/1.3)+0.25*Math.min(1,g.both.length/14)+0.2)*100),25,100);
+        const cA=(mainBest[A+'|'+O]||{}).conf||0, cB=(mainBest[B+'|'+O]||{}).conf||0;
+        out.push({ a:A, b:B, o:O, aLabel:V[A].label, bLabel:V[B].label, oLabel:V[O].label,
+          r:(liftA>0?1:-1)*+effect.toFixed(2), n:g.both.length, conf, mainA:cA, mainB:cB,
+          combo:+mBoth.toFixed(1), alone:+Math.max(mA,mB).toFixed(1) });
+      }
+    }
+    return out.sort((a,b)=>b.conf-a.conf).slice(0,20);
+  },
+  // MEDIATION pathways X → M → Y (e.g. caffeine → poor sleep → anxiety): all three edges
+  // must exist as findings. Reported as a candidate pathway, honestly not proven causation.
+  findPathways(list, V){
+    const byPair={}; list.forEach(f=>{ byPair[f.pk+'>'+f.ok]=f; });
+    const mediators=['sleepQuality','sleepMin','fatigue','cogFatigue','pem','brainFog','agitation','overstim','anxiety']
+      .filter(k=>V[k]);
+    const out=[];
+    list.forEach(xm=>{ const X=xm.pk, M=xm.ok; if(!mediators.includes(M)||X===M) return;
+      list.forEach(my=>{ if(my.pk!==M) return; const Y=my.ok; if(Y===X||Y===M) return;
+        const xy=byPair[X+'>'+Y]; if(!xy) return;                 // direct link must also exist
+        if(xm.conf<40||my.conf<40) return;
+        const conf=Math.min(xm.conf,my.conf,xy.conf+15);
+        out.push({ x:X, m:M, y:Y, xLabel:V[X].label, mLabel:V[M].label, yLabel:V[Y].label,
+          conf:Math.round(conf), legs:[xm.conf,my.conf,xy.conf] });
+      });
+    });
+    // dedupe by X|M|Y, keep strongest
+    const bp={}; out.forEach(p=>{ const k=p.x+'|'+p.m+'|'+p.y; if(!bp[k]||p.conf>bp[k].conf)bp[k]=p; });
+    return Object.values(bp).sort((a,b)=>b.conf-a.conf).slice(0,12);
   },
   gapDays(vecs){ if(vecs.length<2)return 0; let gaps=0; for(let i=1;i<vecs.length;i++){ const d=Math.round((vecs[i]._ts-vecs[i-1]._ts)/DAY); if(d>1)gaps+=d-1; } return gaps; },
 };
@@ -1651,6 +1741,15 @@ Views.insights=(v)=>{
   if(State.sub==='modelcard'){ return renderModelCard(v); }
   v.append(header('Insights',''));
   const r=Insights.compute();
+  // Today's headline indices (moved here from Home)
+  const s=Score.seriesAll(); const latest=s[s.length-1]; const niis=Neuro.series();
+  v.append(el('div',{class:'card'},
+    el('div',{class:'row'}, el('h2',{},'Today'), el('div',{class:'spacer'}),
+      el('button',{class:'btn sm ghost',onclick:()=>go('trends')},'Trends →')),
+    el('div',{class:'row',style:'gap:8px;margin-top:6px'},
+      indexTile('QOL', latest?latest.qol:null, 'var(--qol)', 'higher = better'),
+      indexTile('Cognitive', latest?latest.cog:null, 'var(--cog)', 'higher = better'),
+      indexTile('NII', niis.length&&niis[niis.length-1].nii!=null?niis[niis.length-1].nii:null, 'var(--nii)', 'higher = worse'))));
   // NII summary card
   const nii=Neuro.series(); const last=nii.length?nii[nii.length-1]:null;
   v.append(el('div',{class:'card'},
@@ -1674,6 +1773,23 @@ Views.insights=(v)=>{
   v.append(el('div',{class:'banner'}, el('span',{class:'bic'},'ℹ️'),
     el('div',{class:'bt'}, el('b',{},r.findings.length+' patterns found across '+r.nDays+' days'),
       el('span',{}, (r.missedDays?r.missedDays+' missed days lower confidence. ':'')+'Many pairs are tested — treat lower confidences as tentative. Correlation ≠ causation.'))));
+
+  // COMPOUND effects (two things together)
+  if(r.interactions&&r.interactions.length){ const c=el('div',{class:'card'});
+    c.append(el('h2',{},'Combined effects'), el('p',{class:'muted',style:'margin:2px 0 8px'},'Two things that together predict an outcome more than either alone.'));
+    r.interactions.slice(0,8).forEach(it=>c.append(el('div',{style:'padding:8px 0;border-bottom:1px solid var(--line)'},
+      el('div',{class:'row'}, el('div',{style:'flex:1;font-size:13.5px;font-weight:600'}, it.aLabel+' + '+it.bLabel+' → '+it.oLabel),
+        el('b',{style:`color:${confColor(it.conf)}`},it.conf+'%')),
+      el('div',{class:'muted',style:'font-size:11px'}, (it.r>0?'stronger together':'opposite together')+' · vs alone '+it.mainA+'% / '+it.mainB+'% · n='+it.n))));
+    v.append(c); }
+  // PATHWAYS (mediation chains)
+  if(r.pathways&&r.pathways.length){ const c=el('div',{class:'card'});
+    c.append(el('h2',{},'Possible pathways'), el('p',{class:'muted',style:'margin:2px 0 8px'},'Candidate chains where one thing may act through another. Suggestive, not proven.'));
+    r.pathways.slice(0,8).forEach(p=>c.append(el('div',{style:'padding:8px 0;border-bottom:1px solid var(--line)'},
+      el('div',{class:'row'}, el('div',{style:'flex:1;font-size:13px;font-weight:600'}, p.xLabel+' → '+p.mLabel+' → '+p.yLabel),
+        el('b',{style:`color:${confColor(p.conf)}`},p.conf+'%')),
+      el('div',{class:'muted',style:'font-size:11px'}, 'via '+p.mLabel.toLowerCase()))));
+    v.append(c); }
 
   // filter chips
   const chips=el('div',{class:'seg',style:'margin-bottom:12px;flex-wrap:wrap'});
@@ -1829,6 +1945,7 @@ function renderCalendar(v){
   const first=new Date(y,mo,1), start=first.getDay(), days=new Date(y,mo+1,0).getDate();
   const byDay={}; D().assessments.forEach(a=>{ (byDay[dayKey(a.ts)]=byDay[dayKey(a.ts)]||[]).push(a); });
   const evByDay={}; D().events.forEach(e=>{ (evByDay[e.date]=evByDay[e.date]||[]).push(e); });
+  const busySet=new Set((D().skips||[]).filter(s=>s.kind==='busy').map(s=>dayKey(s.ts)));
   const card=el('div',{class:'card'});
   card.append(el('div',{class:'row',style:'margin-bottom:10px'},
     el('button',{class:'btn sm ghost',onclick:()=>{histState.month=new Date(y,mo-1,1).getTime();render();}},'‹'),
@@ -1840,7 +1957,9 @@ function renderCalendar(v){
   const todayKey=dayKey(Date.now());
   for(let d=1;d<=days;d++){ const key=y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     const items=byDay[key]||[]; const evs=evByDay[key]||[]; const isToday=key===todayKey;
-    const cell=el('button',{style:`position:relative;aspect-ratio:1;border-radius:9px;border:1px solid ${isToday?'var(--amber)':(items.length?'var(--line2)':'var(--line)')};background:${items.length?'var(--panel2)':'transparent'};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px`,
+    const isBusy=busySet.has(key); const isUnwell=items.some(a=>a.tooUnwell);
+    const cellBg=isUnwell?'rgba(255,92,107,.14)':(isBusy?'rgba(255,207,92,.14)':(items.length?'var(--panel2)':'transparent'));
+    const cell=el('button',{style:`position:relative;aspect-ratio:1;border-radius:9px;border:1px solid ${isToday?'var(--amber)':(isUnwell?'rgba(255,92,107,.5)':(isBusy?'rgba(255,207,92,.5)':(items.length?'var(--line2)':'var(--line)')))};background:${cellBg};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:2px`,
       onclick:()=>go('history','day:'+key)},
       // gold diamond in the corner of today's square
       isToday?el('span',{style:'position:absolute;top:3px;right:3px;width:7px;height:7px;background:var(--amber);box-shadow:0 0 6px var(--amber);transform:rotate(45deg)'}):null,
@@ -1850,8 +1969,8 @@ function renderCalendar(v){
         ...(evs.length?[el('span',{style:'width:5px;height:5px;border-radius:50%;background:var(--red)'})]:[])));
     grid.append(cell); }
   card.append(grid);
-  card.append(el('div',{class:'row',style:'gap:12px;margin-top:12px;justify-content:center'},
-    legendDot('var(--blue)','Daily'),legendDot('var(--purple)','Weekly'),legendDot('var(--red)','Event')));
+  card.append(el('div',{class:'row wrap',style:'gap:10px;margin-top:12px;justify-content:center'},
+    legendDot('var(--blue)','Daily'),legendDot('var(--purple)','Full'),legendDot('var(--red)','Unwell'),legendDot('var(--amber)','Too busy')));
   v.append(card);
 }
 function legendDot(c,l){ return el('span',{class:'row',style:'gap:5px'},el('span',{style:`width:8px;height:8px;border-radius:50%;background:${c}`}),el('span',{class:'muted',style:'font-size:11px'},l)); }
@@ -1860,6 +1979,7 @@ function renderDayView(v, dayk){
   const dayTs=new Date(y,mo-1,d,12,0,0).getTime();
   const isToday=dayk===dayKey(Date.now());
   const on=dayk; const F=x=>dayKey(x)===on;
+  const busySkip=(D().skips||[]).find(s=>s.kind==='busy'&&dayKey(s.ts)===on);
   v.append(el('div',{class:'hdr'}, el('div',{class:'row'},
     el('button',{class:'btn sm ghost',onclick:()=>go('history')},'‹ Back'),
     el('h1',{style:'font-size:17px;margin-left:6px'}, new Date(dayTs).toLocaleDateString([],{weekday:'short',month:'short',day:'numeric',year:'numeric'}) + (isToday?' · Today':'')))));
@@ -1872,6 +1992,9 @@ function renderDayView(v, dayk){
       el('button',{class:'btn sm ghost',onclick:()=>QuickLog.open('med',dayTs)},'💊 Med / supp'),
       el('button',{class:'btn sm ghost',onclick:()=>QuickLog.open('vital',dayTs)},'🩸 Glucose / BP')),
     el('p',{class:'muted',style:'font-size:11px;margin-bottom:0'},'Backfilling past days closes gaps and improves correlation confidence.')));
+  if(busySkip) v.append(el('div',{class:'banner',style:'border-color:rgba(255,207,92,.5)'}, el('span',{class:'bic'},'😐'),
+    el('div',{class:'bt'}, el('b',{},'Marked "too busy to log"'), el('span',{},'No data affected. Add anything above, or remove this marker.')),
+    el('button',{class:'btn sm ghost',onclick:()=>{ D().skips=D().skips.filter(s=>s!==busySkip); Store.saveNow(); render(); }},'Remove')));
   // assessments
   const asmts=D().assessments.filter(a=>F(a.ts)).sort((a,b)=>a.ts-b.ts);
   if(asmts.length){ const c=el('div',{class:'card'}); c.append(el('h3',{style:'margin-top:0'},'Assessments'));
@@ -2226,9 +2349,9 @@ const Export={
     const ev=(uidx,summ,rrule,hhmm)=>{ ics+='BEGIN:VEVENT\nUID:'+uidx+'@neurotrack\nDTSTAMP:'+dtstamp+'\nDTSTART:20240101T'+hhmm+'00\nRRULE:'+rrule+'\nSUMMARY:'+summ+'\nBEGIN:VALARM\nTRIGGER:-PT0M\nACTION:DISPLAY\nDESCRIPTION:'+summ+'\nEND:VALARM\nEND:VEVENT\n'; };
     if(D().reminders.find(r=>r.id==='moodWake'&&r.on)) ev('moodwake','NeuroTrack — morning mood + wake glucose','FREQ=DAILY','0800');
     if(D().reminders.find(r=>r.id==='daily'&&r.on)) ev('daily','NeuroTrack — end-of-day mood + check-in','FREQ=DAILY','2000');
-    const amh=String(D().settings.weeklyAmHour||8).padStart(2,'0');
-    if(D().reminders.find(r=>(r.id==='weeklyAm'||r.id==='weekly')&&r.on)) ev('weeklyam','NeuroTrack — weekly MORNING baseline (before meds)','FREQ=WEEKLY;BYDAY='+dow, amh+'00');
-    if(D().reminders.find(r=>r.id==='weekly'&&r.on)) ev('weekly','NeuroTrack — weekly EVENING full','FREQ=WEEKLY;BYDAY='+dow, wh+'00');
+    const amh=String(D().settings.weeklyAmHour||7).padStart(2,'0');
+    if(D().reminders.find(r=>(r.id==='weeklyAm'||r.id==='weekly')&&r.on)) ev('weeklyam','NeuroTrack — full baseline (~45 min)','FREQ=WEEKLY;BYDAY='+dow, amh+'00');
+    if(D().reminders.find(r=>r.id==='weekly'&&r.on)) ev('weekly','NeuroTrack — full baseline (~45 min)','FREQ=WEEKLY;BYDAY='+dow, wh+'00');
     if(D().reminders.find(r=>r.id==='glucose'&&r.on)) ['0700','1200','1600','2000','2230'].forEach((t,i)=>ev('glu'+i,'NeuroTrack — glucose reading','FREQ=DAILY',t));
     if(D().reminders.find(r=>r.id==='bp'&&r.on)) ev('bp','NeuroTrack — blood pressure','FREQ=DAILY','0900');
     ics+='END:VCALENDAR';
