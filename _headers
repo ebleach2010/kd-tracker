@@ -1,0 +1,8 @@
+# Cloudflare Pages headers. Never cache the app HTML so refresh always serves latest;
+# the service worker handles offline. (GitHub Pages ignores this file harmlessly.)
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
