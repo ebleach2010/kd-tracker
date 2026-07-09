@@ -300,8 +300,13 @@ const CONFIG = {
   },
   // literature priors for correlations: {a,b, r0 (expected), k0 (pseudo-count)}
   priors:[
-    {a:'fatigue',b:'nii',r0:.6,k0:8}, {a:'sleepQuality',b:'brainFog',r0:-.4,k0:6},
-    {a:'daysSinceIVIG',b:'nii',r0:.4,k0:6}, {a:'physical',b:'pem',r0:.4,k0:6},
+    // NOTE: the composite indices (nii/qol/cog) are intentionally NOT correlation
+    // outcomes (a component vs its own composite would be circular), so priors must
+    // reference real per-symptom / predictor variables. The IVIG "wear-off" intent is
+    // carried by days-since-IVIG → rising fatigue/cognitive-fatigue.
+    {a:'fatigue',b:'cogFatigue',r0:.5,k0:6}, {a:'sleepQuality',b:'brainFog',r0:-.4,k0:6},
+    {a:'daysSinceIVIG',b:'fatigue',r0:.35,k0:6}, {a:'daysSinceIVIG',b:'cogFatigue',r0:.3,k0:5},
+    {a:'physical',b:'pem',r0:.4,k0:6},
     {a:'depression',b:'cogFatigue',r0:.4,k0:5}, {a:'sleepQuality',b:'cogFatigue',r0:-.4,k0:5},
   ],
 };
