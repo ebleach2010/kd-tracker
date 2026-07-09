@@ -325,9 +325,11 @@ function buildDesc(){
   D.depression=g('Bright, hopeful mood','Low but functioning','Severe, unable to feel anything good');
   D.anxiety=g('Calm and settled','Noticeable worry/tension','Panic-level, overwhelming');
   D.overstim=g('Comfortable with input','Sounds/lights starting to grate','Sensory overload, need to flee');
-  D.sleepQuality=g('Deep, fully restorative','Broken but okay','No real sleep / unrefreshing');
+  // higher = BETTER (matches the o:-1 orientation in scoreMap/neuroWeights and the label)
+  D.sleepQuality=g('No real sleep / unrefreshing','Broken but okay','Deep, fully restorative');
   D.visualDistortion=g('Vision normal vs baseline','Mild shimmer/afterimages','Severe distortion, hard to see');
-  D.emotEngagement=g('Fully present with people','Somewhat flat','Completely numb/detached');
+  // higher = BETTER (more engaged) — matches o:-1 orientation and the label
+  D.emotEngagement=g('Completely numb/detached','Somewhat flat','Fully present with people');
   D.emotStressors=g('None weighing on me','A few nagging worries','Crushing emotional load');
   D.envStressors=g('Calm environment','Some chaos/demands','Overwhelming environment');
   D.generalStress=g('Totally relaxed','Moderate ongoing stress','Maxed-out stress');
@@ -1699,8 +1701,10 @@ const Insights = {
       const gl=[]; list.forEach(a=>(a.glucose||[]).forEach(g=>gl.push(g.value)));
       D().vitals.filter(x=>x.type==='glucose'&&dayKey(x.ts)===k).forEach(g=>gl.push(g.value));
       if(gl.length){ const gmean=Stats.mean(gl), gsd=Stats.sd(gl);
-        v.glucoseMean=gmean; v.glucoseVar=gsd;
-        v.glucoseStability=clamp(100-(gmean?gsd/gmean*100:0),0,100); // % stability across the day (100 − CV%)
+        v.glucoseMean=gmean;
+        // Within-day variability/stability (CV-based) needs ≥3 readings to be meaningful — a
+        // CV from 1–2 finger-sticks is noise. (True glycemic variability wants CGM-density data.)
+        if(gl.length>=3){ v.glucoseVar=gsd; v.glucoseStability=clamp(100-(gmean?gsd/gmean*100:0),0,100); } // 100 − CV%
         if(gl.length>=2){ v.glucoseSpike=Math.max(...gl); v.glucoseTrough=Math.min(...gl); v.glucoseRange=Math.max(...gl)-Math.min(...gl); } }
       // meds: deviation events per med (acute change/timing vs chronic regimen change; 0mg = missed)
       D().meds.forEach(m=>{ let changes=0,missed=0,added=0,chronic=0,doseSum=0,doseN=0;
