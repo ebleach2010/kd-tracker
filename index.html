@@ -555,10 +555,11 @@ Views.home=(v)=>{
 ['trends','insights','history','events','sources','settings'].forEach(t=>{
   Views[t]=(v)=>{ v.append(header(t[0].toUpperCase()+t.slice(1),'')); v.append(el('div',{class:'card'},el('p',{class:'muted'},'…'))); };
 });
-function header(title,sub){
+function header(title,sub,actions){
   return el('div',{class:'hdr'},
     el('div',{class:'row'}, el('div',{class:'brandmark'}),
-      el('div',{}, el('h1',{},title), sub?el('div',{class:'sub'},sub):null)));
+      el('div',{}, el('h1',{},title), sub?el('div',{class:'sub'},sub):null)),
+    actions&&actions.length?el('div',{class:'row',style:'gap:6px'}, ...actions):null);
 }
 
 /* ==========================================================================
@@ -1242,7 +1243,10 @@ const QUIZ = {
    HOME
    ========================================================================== */
 Views.home=(v)=>{
-  v.append(header('NeuroTrack','post-AE function tracker'));
+  v.append(header('NeuroTrack','post-AE function tracker', [
+    el('button',{class:'btn sm ghost',style:'padding:7px 10px;font-size:16px',onclick:()=>go('settings')},'⚙'),
+    el('button',{class:'btn sm',style:'padding:7px 11px;border-color:var(--red);color:#ffd7dc;font-size:12px',onclick:()=>clearAllToday()},'Clear today')
+  ]));
   // due banners — comprehensive Morning / Evening assessments (daily), + Thursday full baseline
   const now=new Date(); const isWDay=now.getDay()===D().settings.weeklyDow; const hr=now.getHours();
   // Full baseline (~45 min, cognitive battery) — reminder on the weekly day; takeable ANY time
@@ -1273,7 +1277,8 @@ Views.home=(v)=>{
       el('button',{class:'btn ghost',onclick:()=>MoodLog.openWake()},'🌅 Morning mood')),
     el('div',{class:'row',style:'gap:8px;margin-top:10px'},
       el('button',{class:'btn',style:'flex:1;border-color:rgba(255,92,107,.5);color:#ffd7dc',onclick:()=>logUnwell()}, '😞 Too unwell'),
-      el('button',{class:'btn',style:'flex:1;border-color:rgba(255,207,92,.5);color:#ffeec2',onclick:()=>logBusy()}, '😐 Too busy'))));
+      el('button',{class:'btn',style:'flex:1;border-color:rgba(255,207,92,.5);color:#ffeec2',onclick:()=>logBusy()}, '😐 Too busy')),
+    el('button',{class:'btn ghost block',style:'margin-top:8px',onclick:()=>clearMenu()},'🧹 Clear…')));
 
   // episode toggles — flip the switch to start/stop; tap the right side to adjust the time/date
   v.append(el('div',{class:'card'},
@@ -1310,6 +1315,44 @@ function logUnwell(){ const ts=Date.now();
 // "too busy to log" — a neutral skipped-day marker that does NOT affect any data
 function logBusy(){ const ts=Date.now(); if((D().skips||[]).some(s=>dayKey(s.ts)===dayKey(ts))){ toast('Today already marked busy'); return; }
   D().skips.push({id:uid(),ts,kind:'busy'}); Store.saveNow(); toast('Marked too busy — no data affected'); render(); }
+// Erase EVERYTHING logged today (assessments, doses, vitals, mood, events, skips, episodes started today)
+function clearAllToday(){ const t=dayKey(Date.now());
+  confirmDlg('Erase ALL of today\'s data?','Every assessment, dose, vital, mood, note, event and marker logged today will be permanently deleted. Nothing from other days is touched. This cannot be undone.',()=>{
+    const d=D();
+    d.assessments=d.assessments.filter(a=>dayKey(a.ts)!==t);
+    d.medLogs=d.medLogs.filter(e=>dayKey(e.ts)!==t);
+    d.supplementLogs=d.supplementLogs.filter(e=>dayKey(e.ts)!==t);
+    d.vitals=d.vitals.filter(e=>dayKey(e.ts)!==t);
+    d.moodLogs=d.moodLogs.filter(e=>dayKey(e.ts)!==t);
+    d.skips=(d.skips||[]).filter(s=>dayKey(s.ts)!==t);
+    d.events=d.events.filter(e=>e.date!==t);
+    d.regimenLog=(d.regimenLog||[]).filter(r=>dayKey(r.ts)!==t);
+    d.episodes=d.episodes.filter(ep=>dayKey(ep.startTs)!==t);       // started today → gone
+    d.episodes.forEach(ep=>{ if(ep.endTs!=null&&dayKey(ep.endTs)===t) ep.endTs=null; }); // ended today → reopen
+    Store.saveNow(); toast('Today\'s data cleared'); render();
+  });
+}
+// Selective clear — remove one subcategory for today only
+function clearMenu(){ const t=dayKey(Date.now()); const d=D();
+  const cats=[
+    {label:'Assessments', n:d.assessments.filter(a=>dayKey(a.ts)===t).length, clear:()=>{d.assessments=d.assessments.filter(a=>dayKey(a.ts)!==t);}},
+    {label:'Med & supplement doses', n:[...d.medLogs,...d.supplementLogs].filter(e=>dayKey(e.ts)===t).length, clear:()=>{d.medLogs=d.medLogs.filter(e=>dayKey(e.ts)!==t);d.supplementLogs=d.supplementLogs.filter(e=>dayKey(e.ts)!==t);}},
+    {label:'Vitals (glucose / BP)', n:d.vitals.filter(e=>dayKey(e.ts)===t).length, clear:()=>{d.vitals=d.vitals.filter(e=>dayKey(e.ts)!==t);}},
+    {label:'Mood logs', n:d.moodLogs.filter(e=>dayKey(e.ts)===t).length, clear:()=>{d.moodLogs=d.moodLogs.filter(e=>dayKey(e.ts)!==t);}},
+    {label:'Events', n:d.events.filter(e=>e.date===t).length, clear:()=>{d.events=d.events.filter(e=>e.date!==t);}},
+    {label:'Episodes started today', n:d.episodes.filter(ep=>dayKey(ep.startTs)===t).length, clear:()=>{d.episodes=d.episodes.filter(ep=>dayKey(ep.startTs)!==t);}},
+    {label:'"Too busy" marker', n:(d.skips||[]).filter(s=>dayKey(s.ts)===t).length, clear:()=>{d.skips=(d.skips||[]).filter(s=>dayKey(s.ts)!==t);}},
+  ];
+  const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
+  const dlg=el('div',{class:'dlg',style:'max-height:80vh;overflow:auto'});
+  dlg.append(el('h3',{},'Clear today\'s data'), el('p',{class:'muted',style:'font-size:12px'},'Remove one category for today only. Cannot be undone.'));
+  cats.forEach(cat=>dlg.append(el('div',{class:'row',style:'padding:9px 0;border-bottom:1px solid var(--line)'},
+    el('span',{style:'flex:1;font-size:13px'}, cat.label+' ('+cat.n+')'),
+    el('button',{class:'btn sm ghost',disabled:cat.n===0,style:cat.n?'border-color:rgba(255,92,107,.4);color:#ffd7dc':'',
+      onclick:()=>confirmDlg('Clear '+cat.label.toLowerCase()+' for today?','',()=>{ cat.clear(); Store.saveNow(); close(); toast('Cleared'); render(); })},'Clear'))));
+  dlg.append(el('div',{class:'acts'}, el('button',{class:'btn ghost',onclick:close},'Done')));
+  scrim.append(dlg); scrim.addEventListener('click',e=>{if(e.target===scrim)close();}); document.body.append(scrim);
+}
 const MoodLog={ openWake(forTs){ const scrim=el('div',{class:'scrim'}); const close=()=>scrim.remove();
   const dlg=el('div',{class:'dlg'}); dlg.append(el('h3',{},'Morning mood'+(forTs?' · '+fmtD(forTs):'')));
   let val=5; dlg.append(makeSlider({key:'moodWake',label:'How do you feel on waking? (terrible → amazing)'},5,v=>val=v));
@@ -2152,7 +2195,7 @@ Views.settings=(v)=>{
   v.append(listEditor('Medications','meds',{doses:true,purpose:true,baseline:true,unit:true,pk:true}));
   v.append(listEditor('Supplements','supplements',{doses:true,baseline:true,unit:true}));
   v.append(toggleEditor());
-  v.append(strListEditor('Self-care activities','selfCareTypes'));
+  v.append(strListEditor('Daily y/n items (self-care, activities)','selfCareTypes'));
   v.append(eventTypeEditor());
   // reminders
   const rc=el('div',{class:'card'}); rc.append(el('h2',{},'Reminders'));
@@ -2247,8 +2290,9 @@ const PKLookup = {
     }catch(e){ toast('Offline or no FDA match — enter PK manually'); }
   },
 };
-function toggleEditor(){ const c=el('div',{class:'card'}); c.append(el('div',{class:'row'},el('h2',{},'Episode toggles'),el('div',{class:'spacer'}),
+function toggleEditor(){ const c=el('div',{class:'card'}); c.append(el('div',{class:'row'},el('h2',{},'State toggles'),el('div',{class:'spacer'}),
     el('button',{class:'btn sm',onclick:()=>{D().toggleTypes.push({id:uid(),label:'New state',color:'#22e3ff'});Store.saveNow();render();}},'+ Add')));
+  c.append(el('p',{class:'muted',style:'margin:2px 0 8px'},'On/off states that span time (illness, childcare, PEM). For simple daily yes/no items, use the section below.'));
   D().toggleTypes.forEach(t=>c.append(el('div',{class:'row',style:'padding:7px 0;border-bottom:1px solid var(--line)'},
     el('span',{style:`width:12px;height:12px;border-radius:50%;background:${t.color}`}),
     el('input',{type:'text',value:t.label,style:'flex:1',oninput:e=>{t.label=e.target.value;Store.save();}}),
