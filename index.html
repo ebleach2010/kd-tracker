@@ -275,7 +275,7 @@ const CONFIG = {
     {id:'working',label:'Working',color:'#3dff9a'},
   ],
   defaultEvents:['Relapse','Hospital stay','Major dissociative episode','PTSD flashback','Death in the family','Move'],
-  defaultSelfCare:['Meditated','Cold plunge','Nap x1','Nap x2','Nap x3','Designated resting','Recreational activities'],
+  defaultSelfCare:['Meditated','Cold plunge','Nap x1','Nap x2','Nap x3','Designated resting','Recreational activities','Self care'],
   // neuroinflammation index loadings (orientation: +1 higher=more inflam, -1 reverse)
   neuroWeights:{
     fatigue:{w:1.0,o:1}, cogFatigue:{w:1.0,o:1}, brainFog:{w:1.0,o:1},
@@ -380,6 +380,9 @@ const Store = (()=>{
   // add any new default state-toggles (e.g. ice brain) for existing users
   data.toggleTypes=data.toggleTypes||[];
   CONFIG.defaultToggles.forEach(dt=>{ if(!data.toggleTypes.some(t=>t.id===dt.id)) data.toggleTypes.push({...dt}); });
+  // add any new default self-care items (e.g. "Self care") for existing users
+  data.selfCareTypes=data.selfCareTypes||[];
+  CONFIG.defaultSelfCare.forEach(sc=>{ if(!data.selfCareTypes.includes(sc)) data.selfCareTypes.push(sc); });
   let saveT;
   const save=()=>{ clearTimeout(saveT); saveT=setTimeout(()=>{
     try{ localStorage.setItem(KEY,JSON.stringify(data)); }catch(e){ console.warn('save failed',e); }
