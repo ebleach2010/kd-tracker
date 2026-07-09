@@ -245,6 +245,9 @@ const CONFIG = {
   // For 1–10 items index 1..10 used; index0 unused. Filled by buildDesc().
   sliderDesc:{},
   glucoseSlots:['Wake','Noon','4pm','8pm','Bedtime'],
+  // meal-relation tag for a glucose reading (postprandial context matters for interpretation:
+  // fasting/pre-meal vs post-meal spikes read very differently). Selectable on every reading.
+  glucoseRel:['—','Fasting','Before meal','After meal','Before snack','After snack'],
   // meds are in mg unless unit overridden. Logging: enter mg (0 = skipped), and a
   // change-type defaulting to "acute" (acute change/timing) vs "chronic" (daily-regimen change).
   // cogEnhancer meds carry a simple pharmacokinetic curve (minutes): onset→peak→duration,
@@ -956,9 +959,17 @@ const Assess = {
     const g=el('div',{class:'grid2'});
     const slots = (step&&step.wakeOnly) ? ['Wake'] : CONFIG.glucoseSlots;
     slots.forEach(slot=>{
+      // per-slot: a value input + a meal-relation select (before/after meal or snack). rel is
+      // held per-slot so writing the value picks up whatever relation is currently chosen.
+      let rel='—';
+      const relSel=el('select',{style:'font-size:12px;padding:6px 4px',onchange:e=>{ rel=e.target.value;
+        const ex=d.glucose.find(x=>x.slot===slot); if(ex) ex.rel=rel; }});
+      CONFIG.glucoseRel.forEach(r=>relSel.append(el('option',{},r)));
       g.append(el('label',{class:'fld'}, el('div',{class:'lb'},slot),
-        el('input',{type:'number',inputmode:'numeric',placeholder:'—',oninput:e=>{
-          d.glucose=d.glucose.filter(x=>x.slot!==slot); if(e.target.value) d.glucose.push({slot,value:+e.target.value,ts:d.ts}); }})));
+        el('div',{class:'row',style:'gap:6px'},
+          el('input',{type:'number',inputmode:'numeric',placeholder:'—',style:'flex:1',oninput:e=>{
+            d.glucose=d.glucose.filter(x=>x.slot!==slot); if(e.target.value) d.glucose.push({slot,value:+e.target.value,ts:d.ts,rel}); }}),
+          relSel)));
     });
     b.append(g);
     b.append(el('h3',{},'Blood pressure'));
@@ -1497,13 +1508,15 @@ const QuickLog = {
       dlg.append(el('h3',{},'Glucose / BP'+(forTs?' · '+fmtD(forTs):'')));
       const gv=el('input',{type:'number',inputmode:'numeric',placeholder:'Glucose mg/dL'});
       const slot=el('select',{}); CONFIG.glucoseSlots.forEach(s=>slot.append(el('option',{},s)));
+      const rel=el('select',{}); CONFIG.glucoseRel.forEach(r=>rel.append(el('option',{},r))); // before/after meal or snack
       const sys=el('input',{type:'number',placeholder:'Sys'}),dia=el('input',{type:'number',placeholder:'Dia'}),pu=el('input',{type:'number',placeholder:'Pulse'});
-      dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Glucose'),el('div',{class:'row',style:'gap:8px'},gv,slot)));
+      dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Glucose'),el('div',{class:'row',style:'gap:8px'},gv,slot),
+        el('div',{class:'row',style:'gap:8px;margin-top:6px'},el('span',{class:'muted',style:'font-size:12px;align-self:center'},'Relation to food'),rel)));
       dlg.append(el('label',{class:'fld'},el('div',{class:'lb'},'Blood pressure'),el('div',{class:'row',style:'gap:8px'},sys,dia,pu)));
       dlg.append(el('div',{class:'acts'},
         el('button',{class:'btn ghost',onclick:close},'Cancel'),
         el('button',{class:'btn primary',onclick:()=>{ const ts=stamp();
-          if(gv.value) D().vitals.push({type:'glucose',ts,value:+gv.value,slot:slot.value});
+          if(gv.value) D().vitals.push({type:'glucose',ts,value:+gv.value,slot:slot.value,rel:rel.value==='—'?null:rel.value});
           if(sys.value||dia.value) D().vitals.push({type:'bp',ts,sys:+sys.value||null,dia:+dia.value||null,pulse:+pu.value||null});
           Store.saveNow(); close(); toast('Vitals logged ✓'); render(); }},'Log now')));
     }
@@ -1951,7 +1964,7 @@ Views.insights=(v)=>{
       : 'Calibrating — needs ~'+D().settings.calibrateMin+' assessments across an IVIG cycle.'),
     el('div',{class:'row',style:'gap:8px'},
       el('button',{class:'btn sm',onclick:()=>go('insights','modelcard')},'How it\'s built (model card)'),
-      el('button',{class:'btn sm ghost',onclick:()=>Lit.refresh(v)},'↻ Refresh literature'))));
+      el('button',{class:'btn sm ghost',onclick:()=>go('science')},'🔬 Full methods'))));
 
   if(r.locked){
     v.append(el('div',{class:'card'}, el('h2',{},'Correlations locked'),
@@ -2051,6 +2064,7 @@ function renderModelCard(v){
   v.append(el('div',{class:'banner pink'}, el('span',{class:'bic'},'⚕️'),
     el('div',{class:'bt'}, el('b',{},'Do not self-diagnose a relapse'),
       el('span',{},'A rising trend is a prompt to rest and check sleep/stress. If it climbs and stays high — or comes with new seizures, severe confusion, or psychiatric changes — contact your neurologist.'))));
+  v.append(el('button',{class:'btn ghost block',style:'margin:12px 0 16px',onclick:()=>go('science')},'🔬 Full methods & IVIG pharmacology →'));
 }
 
 /* Refresh-literature (Europe PMC, keyless CORS) */
@@ -2259,7 +2273,7 @@ function renderDayView(v, dayk){
   const vit=D().vitals.filter(x=>F(x.ts)); asmts.forEach(a=>(a.glucose||[]).forEach(g=>vit.push({type:'glucose',...g})));
   if(vit.length){ const c=el('div',{class:'card'}); c.append(el('h3',{style:'margin-top:0'},'Vitals'));
     vit.sort((a,b)=>a.ts-b.ts).forEach(x=>c.append(el('div',{class:'row',style:'padding:5px 0'},
-      el('span',{style:'flex:1;font-size:13px'}, x.type==='glucose'?('Glucose '+x.value+' mg/dL'+(x.slot?' ('+x.slot+')':'')):('BP '+x.sys+'/'+x.dia+(x.pulse?' · '+x.pulse+'bpm':''))),
+      el('span',{style:'flex:1;font-size:13px'}, x.type==='glucose'?('Glucose '+x.value+' mg/dL'+(x.slot?' ('+x.slot+')':'')+(x.rel&&x.rel!=='—'?' · '+x.rel:'')):('BP '+x.sys+'/'+x.dia+(x.pulse?' · '+x.pulse+'bpm':''))),
       el('span',{class:'muted',style:'font-size:11px'},fmtT(x.ts))))); v.append(c); }
   // mood logs
   const moods=D().moodLogs.filter(m=>F(m.ts));
@@ -2426,7 +2440,8 @@ Views.settings=(v)=>{
     el('button',{class:'btn sm ghost',onclick:()=>Export.importJSON()},'⤒ Restore JSON'),
     el('button',{class:'btn sm ghost',onclick:()=>confirmDlg('Erase ALL data?','This cannot be undone. Back up first.',()=>{Store.reset();go('home');})},'Erase all')));
   v.append(dc);
-  // sources link (moved off the tab bar)
+  // the full behind-the-scenes methods/research page + sources link (both off the tab bar)
+  v.append(el('button',{class:'btn block',style:'margin-bottom:8px',onclick:()=>go('science')},'🔬 The science, in the open'));
   v.append(el('button',{class:'btn ghost block',style:'margin-bottom:14px',onclick:()=>go('sources')},'❋ Sources & evidence'));
   // dev
   const dev=el('div',{class:'card'}); dev.append(el('h3',{style:'margin-top:0'},'Developer'));
@@ -2546,6 +2561,166 @@ const SOURCES={
     ['EWMA smoothing','Used for the NII trend line.','https://pmc.ncbi.nlm.nih.gov/articles/PMC10248291/'],
   ],
 };
+/* ==========================================================================
+   SCIENCE / METHODS PAGE — "everything behind the scenes"
+   A dedicated, plain-language account of what the app measures, how every
+   index and correlation is computed, what the IVIG pharmacology knowledge is,
+   how confident the trend-detection currently is, and every source. Reachable
+   from Settings and the NII model card. Nothing here is hidden in code.
+   ========================================================================== */
+// Sources specific to the methods + IVIG pharmacology described on this page.
+const SCIENCE_SOURCES={
+  'Correlation & statistics methods':[
+    ['Kendall rank correlation (τ-b)','Monotonic association robust to ties — better than Spearman for tied ordinal sliders at small n.','https://en.wikipedia.org/wiki/Kendall_rank_correlation_coefficient'],
+    ['Distance correlation (Székely, Rizzo & Bakirov, 2007)','Detects ANY dependence, including non-monotonic (U-shaped) relationships a rank correlation misses.','https://en.wikipedia.org/wiki/Distance_correlation'],
+    ['Benjamini–Hochberg FDR (1995)','Controls the false-discovery rate when many pairs are tested at once.','https://en.wikipedia.org/wiki/False_discovery_rate'],
+    ['n-of-1 / single-case methodology','The statistical frame for one person tracked intensively over time.','https://en.wikipedia.org/wiki/N_of_1_trial'],
+    ['Bayesian shrinkage toward priors','Small-n estimates pulled toward literature expectation; the data takes over as n grows.','https://en.wikipedia.org/wiki/Shrinkage_(statistics)'],
+    ['EWMA smoothing','Exponentially-weighted moving average used for the NII trend line.','https://pmc.ncbi.nlm.nih.gov/articles/PMC10248291/'],
+  ],
+  'IVIG pharmacokinetics & half-life':[
+    ['StatPearls — IVIG (NBK554446)','Infused IgG median half-life ~23 days (18–25 d healthy; 33–36 d in immunodeficiency).','https://www.ncbi.nlm.nih.gov/books/NBK554446/'],
+    ['Gammagard Liquid — FDA label','Elimination half-life median 35 days (95% CI 31–42).','https://www.drugs.com/pro/gammagard-liquid.html'],
+    ['Privigen — FDA label','3-week dosing t½ ~27.6 d; 4-week ~45 d; individual range 21–97 d.','https://www.drugs.com/pro/privigen.html'],
+    ['Berger 2016 — IVIG "wear-off" at end of cycle','Trough IgG dips before the next infusion; justifies days-since-IVIG.','https://pmc.ncbi.nlm.nih.gov/articles/PMC4792336/'],
+    ['Roopenian & Akilesh 2007 — FcRn','FcRn recycling sets IgG half-life; saturable at high dose (dose-dependent kinetics).','https://www.nature.com/articles/nri2155'],
+  ],
+  'IVIG anti-inflammatory mechanisms':[
+    ['Schwab & Nimmerjahn 2013 — Nat Rev Immunol','Master review: how IgG modulates the immune system (FcγR blockade, FcγRIIB, sialylated Fc, Treg induction).','https://www.nature.com/articles/nri3401'],
+    ['Kaneko, Nimmerjahn & Ravetch 2006 — Science','Anti-inflammatory activity of IgG requires terminal α2,6-Fc sialylation.','https://pubmed.ncbi.nlm.nih.gov/16888140/'],
+    ['Fehr, Hofmann & Kappeler 1982 — NEJM','Founding evidence of reticuloendothelial FcγR blockade in ITP (24–48 h platelet rise, transient).','https://pubmed.ncbi.nlm.nih.gov/6803159/'],
+    ['Debré et al. 1993 — Lancet','Fcγ fragments alone reproduce the effect → the Fc–FcγR interaction is the operative mechanism.','https://pubmed.ncbi.nlm.nih.gov/8105212/'],
+    ['Almizraq & Branch 2022 — Annals of Blood','Adult-ITP mechanism review; response transient, ~3–4 weeks without re-dosing.','https://aob.amegroups.org/article/view/6137/html'],
+    ['Dubey et al. 2020 — Ann Neurol','Immunotherapy (incl. IVIG) in autoimmune encephalitis.','https://pubmed.ncbi.nlm.nih.gov/'],
+  ],
+};
+Views.science=(v)=>{
+  v.append(el('div',{class:'hdr'}, el('div',{class:'row'},
+    el('button',{class:'btn sm ghost',onclick:()=>go('settings')},'‹ Back'),
+    el('h1',{style:'font-size:18px;margin-left:6px'},'The science, in the open'))));
+  // small local helpers
+  const P=(t)=>el('p',{class:'muted',style:'line-height:1.65;font-size:13px;margin:6px 0'},t);
+  const H=(t)=>el('h3',{style:'margin:14px 0 4px'},t);
+  const UL=(arr)=>el('ul',{class:'muted',style:'line-height:1.6;font-size:12.5px;padding-left:18px;margin:6px 0'},...arr.map(x=>el('li',{},x)));
+  const sec=(title,...kids)=>{ const c=el('div',{class:'card'}); c.append(el('h2',{},title)); kids.forEach(k=>k&&c.append(k)); v.append(c); return c; };
+  const tag=(txt,color)=>el('span',{class:'pill',style:`font-size:10px;border-color:${color||'var(--line)'}`},txt);
+
+  // 1 — what it is
+  sec('What NeuroTrack is',
+    P('A personal instrument for watching neurological function recover — or wobble — after autoimmune encephalitis, and for relating those changes to sleep, meals, exertion, medication changes, illness, and where you are in the IVIG cycle.'),
+    P('It is one self-contained web page. No server, no account, no network calls for your data. Everything you enter lives only in this device\'s local storage; the JSON backup is the only copy that ever leaves. It works fully offline once loaded.'),
+    H('Two cadences'),
+    UL(['Daily end-of-day check-in (~5–8 min): sliders, sleep, meals, exertion, medication deviations, vitals — no cognitive tests.',
+        'Weekly full baseline (~30–45 min): everything above plus the objective cognitive battery and rotating questionnaires. Stimuli are re-seeded each week so you are not memorising the same test.']));
+
+  // 2 — data flow
+  sec('How your data becomes a number',
+    P('Each day is compressed into one feature vector — every slider, derived sleep metric, meal descriptor, vital, medication deviation, episode state, days-since-IVIG, and (on weekly days) each cognitive score. Three things read that vector:'),
+    UL(['The three headline lines (QOL, Cognitive, NII).',
+        'The correlation engine, which pairs every predictor against every outcome across several time lags.',
+        'The IVIG effect model, which adds "how much infusion is on board" as context.']),
+    P('None of it is sent anywhere. The math below runs entirely in your browser.'));
+
+  // 3 — the three lines
+  const s3=sec('The three headline lines');
+  s3.append(el('div',{class:'row',style:'gap:8px;margin:4px 0 10px'},
+    tag('QOL — higher = better','var(--qol)'), tag('Cognitive — higher = better','var(--cog)'), tag('NII — higher = worse','var(--nii)')));
+  s3.append(H('Robust normalisation (shared by all three)'));
+  s3.append(P('Every raw measure is turned into a robust z-score against your OWN rolling history, not a textbook norm:'));
+  s3.append(el('div',{class:'card',style:'background:var(--bg2);font-family:ui-monospace,monospace;font-size:12px;line-height:1.7'},
+    'z = orient · (x − median) / (1.4826 · MAD)'));
+  s3.append(P('Median and MAD (median absolute deviation) are used instead of mean/SD so a single terrible day cannot distort your baseline. "orient" flips measures where lower is worse (e.g. sleep quality). z is clamped to ±4.'));
+  s3.append(H('QOL & Cognitive Ability'));
+  s3.append(P('Each mapped measure contributes a weighted burden to QOL, Cognitive, or both. The objective test composite is then ATTENUATED by your subjective state that day — a strong test taken on a high-fatigue day is discounted (strength α, editable in Settings). The summed burden is inverted so the chart reads intuitively: up = better.'));
+  s3.append(H('Neuroinflammation Index (NII)'));
+  s3.append(P('A symptom-derived PROXY, not a biomarker — it measures no cytokines, antibodies, or imaging. It is a weighted composite of the inflammation-linked "sickness-behaviour" cluster (fatigue, cognitive fatigue, brain fog, low emotional engagement, poor sleep, PEM, somatic depression, plus objective processing speed and reaction-time variability), each robust-z\'d as above, then EWMA-smoothed (λ=0.25) and floor-anchored:'));
+  s3.append(UL(['Your ~10th percentile of burden maps to ≈10 ("your calm floor").',
+        'Your ~90th percentile maps to ≈85, leaving headroom for a true flare.',
+        'The floor adapts slowly as you recover, so genuine improvement lowers the whole line.',
+        'It shows "calibrating" until ~'+D().settings.calibrateMin+' assessments across an IVIG cycle exist.']));
+  s3.append(el('button',{class:'btn sm ghost',style:'margin-top:8px',onclick:()=>go('insights','modelcard')},'See every NII weight (model card) →'));
+
+  // 4 — correlation engine feasibility
+  const s4=sec('The correlation engine — what it can and can\'t do');
+  s4.append(P('Detecting real patterns from one person\'s self-report is genuinely hard. Rather than pretend every fancy method works at this scale, the engine is split into three honest tiers.'));
+  const tierRow=(band,color,title,body)=>el('div',{style:'padding:9px 0;border-bottom:1px solid var(--line)'},
+    el('div',{class:'row'}, tag(band,color), el('div',{style:'flex:1;font-size:13px;font-weight:600;margin-left:8px'},title)),
+    el('div',{class:'muted',style:'font-size:12px;line-height:1.55;margin-top:4px'},body));
+  s4.append(tierRow('ACTIVE NOW','var(--green)','Feasible today — built and running',
+    'Kendall τ-b (monotonic association), distance correlation (any dependence, incl. U-shapes), trend-detrending to kill spurious shared-drift pairs, multi-lag testing (0, 1, 2, 3, 7 days), Benjamini–Hochberg FDR flagging, shrinkage toward literature priors, and plain type + definition labels on every finding.'));
+  s4.append(tierRow('READING, INACTIVE','var(--amber)','Feasible later — needs ~100 well-sampled days',
+    'Compound / moderation effects (two things that together predict more than either alone) and dose-response-shape fits. These keep reading your data every day but stay silent until 100 well-sampled days exist — a complete day with morning + evening comprehensive assessments plus meds, meals, vitals and sleep, within a 7-day rolling window. They need the extra data to be honest, not to be a gimmick.'));
+  s4.append(tierRow('LEFT OUT','#ff9a5c','Not achievable honestly offline — deliberately omitted',
+    'Formal causal mediation / pathway models, canonical correlation, network / graphical models, and latent structural-equation models. At one-person sample sizes these would produce confident-looking claims the data cannot support, so they are not shipped. This is a choice, not a missing feature.'));
+
+  // 5 — statistics plainly
+  const s5=sec('The statistics, in plain language');
+  s5.append(H('Why Kendall τ, not just Spearman'));
+  s5.append(P('The sliders are 1–10 ordinal values with lots of ties. Kendall τ-b handles ties correctly and is more stable than Spearman at small n. It answers: "when this goes up, does that tend to go up too?"'));
+  s5.append(H('Why also distance correlation'));
+  s5.append(P('Some real relationships are not straight lines — e.g. both too little and too much of something is bad (a U-shape). A rank correlation reads that as ≈0. Distance correlation catches it, so those findings get a "non-monotonic" badge instead of being missed.'));
+  s5.append(H('Guarding against fake trends'));
+  s5.append(P('If two things both drift over weeks (say, both slowly improve), they will correlate even if unrelated. Before correlating, each series is DETRENDED by subtracting its local rolling median, so only genuine day-to-day co-movement counts. A pair that looks strong raw but vanishes detrended is flagged "possibly trend-driven".'));
+  s5.append(H('Priors + shrinkage (the "trains itself" part)'));
+  s5.append(P('Pairs with a known literature relationship start from a prior; the observed estimate is pulled toward it and blended as r = (k₀·r₀ + n·r_obs)/(k₀ + n). At 5 data points the prior dominates (no wild claims); as your history grows, your own data takes over and the prior washes out.'));
+  s5.append(H('Confidence 25–100%'));
+  s5.append(P('A blend of effect size, evidence mass (grows with n), and reproducibility (does the pattern hold across split time-windows?). Anything under 25% is suppressed. Because many pairs are tested, borderline hits are FDR-flagged and single-window flukes are penalised — and the app never says "X caused Y", only "X and Y move together, with this timing".'));
+
+  // 6 — IVIG pharmacology
+  const s6=sec('IVIG — the pharmacology the algorithm carries');
+  s6.append(P('Your maintenance IVIG is modelled as an "effect on board" curve so the engine knows an infusion day is not like day 13 of a cycle. It is the sum of a fast acute term and a slow sustained term:'));
+  s6.append(el('div',{class:'card',style:'background:var(--bg2);font-family:ui-monospace,monospace;font-size:12px;line-height:1.7'},
+    'E(t) = wA·Acute(t) + wS·Sustained(t)',el('br',{}),
+    'Sustained(t) = exp(−ln2 / 23 · t)   (IgG t½ ≈ 23 d)',el('br',{}),
+    'Acute(t) = norm·(exp(−t/tf) − exp(−t/tr))'));
+  s6.append(P('IV route weights the acute spike more (wA 0.4 / wS 0.6, peak ~day 1, gone ~day 7). Subcutaneous is flatter and steadier (wA 0.1 / wS 0.9, slower onset) — lower peaks, smaller peak-to-trough swing, so end-of-cycle "wear-off" is gentler. The modelled curve the app actually uses right now:'));
+  // live curve strip from the real model
+  const days=[0,1,2,3,5,7,10,14,21,28];
+  const strip=el('div',{style:'display:flex;gap:5px;align-items:flex-end;height:70px;margin:8px 0'});
+  days.forEach(d=>{ const e=Med.ivigEffect(d,'iv'); const h=Math.round(e.total*64)+2;
+    strip.append(el('div',{style:'flex:1;display:flex;flex-direction:column;align-items:center;gap:3px'},
+      el('div',{style:`width:100%;height:${h}px;border-radius:3px 3px 0 0;background:linear-gradient(180deg,var(--nii),var(--qol))`}),
+      el('div',{class:'muted',style:'font-size:9px'},'d'+d))); });
+  s6.append(strip);
+  s6.append(el('div',{class:'muted',style:'font-size:10.5px;margin-bottom:6px'},'IV route · bar height = total modelled effect (acute + sustained), % of peak'));
+  s6.append(H('Acute anti-inflammatory actions (first ~3 days)'));
+  const mech=(name,how,ev,evc)=>el('div',{style:'padding:7px 0;border-bottom:1px solid var(--line)'},
+    el('div',{class:'row'}, el('div',{style:'flex:1;font-size:12.5px;font-weight:600'},name), tag(ev,evc)),
+    el('div',{class:'muted',style:'font-size:11.5px;line-height:1.5;margin-top:3px'},how));
+  s6.append(mech('FcγR blockade / saturation','Infused IgG occupies activating Fcγ receptors on macrophages, so antibody-coated cells stop being cleared. Founding ITP evidence; platelet rise in 24–48 h, transient.','strong','var(--green)'));
+  s6.append(mech('FcRn saturation','High-dose IgG saturates the FcRn recycling receptor, accelerating catabolism of pathogenic autoantibodies (and shortening IVIG\'s own half-life at high dose).','strong','var(--green)'));
+  s6.append(mech('Complement scavenging','Infused IgG soaks up activated complement (C3b/C4b), blunting complement-mediated tissue damage.','moderate','var(--amber)'));
+  s6.append(mech('Cytokine neutralisation & anti-idiotypic binding','Anti-idiotypic antibodies and cytokine binding damp the acute inflammatory signal.','moderate','var(--amber)'));
+  s6.append(H('Chronic / sustained actions (peak, then decay over the half-life)'));
+  s6.append(mech('Sialylated-Fc → FcγRIIB upregulation','The α2,6-sialylated fraction raises the inhibitory receptor FcγRIIB threshold on effector cells — an ACTIVE immunomodulatory effect, not just steric blockade.','strong','var(--green)'));
+  s6.append(mech('Regulatory T-cell induction','IVIG expands/induces Tregs, shifting the balance away from autoreactive inflammation over days–weeks.','moderate','var(--amber)'));
+  s6.append(mech('Dendritic-cell modulation & B-cell homeostasis','Dampened DC activation and restored B-cell homeostasis lower the chronic inflammatory set-point.','moderate','var(--amber)'));
+  s6.append(mech('End-of-cycle wear-off','As serum IgG falls toward trough before the next infusion, these effects fade — the basis for the days-since-IVIG variable.','moderate','var(--amber)'));
+
+  // 7 — honest confidence
+  const nDays=(()=>{ const s=new Set(); D().assessments.forEach(a=>s.add(dayKey(a.ts))); return s.size; })();
+  const ws=(Insights.wellSampledCount?Insights.wellSampledCount():0);
+  const s7=sec('How much should you trust the trends right now?');
+  s7.append(el('div',{class:'row',style:'gap:8px;margin-bottom:8px'},
+    el('div',{class:'card',style:'flex:1;text-align:center;margin:0'}, el('div',{style:'font-size:22px;font-weight:800;color:var(--qol)'},String(nDays)), el('div',{class:'muted',style:'font-size:10px'},'days logged')),
+    el('div',{class:'card',style:'flex:1;text-align:center;margin:0'}, el('div',{style:'font-size:22px;font-weight:800;color:var(--amber)'},ws+' / 100'), el('div',{class:'muted',style:'font-size:10px'},'well-sampled days'))));
+  s7.append(P(nDays<14
+    ? 'Very early. The lines will move a lot as your baseline forms, and no correlation should be taken seriously yet — the engine keeps everything conservative by leaning on priors.'
+    : nDays<45
+    ? 'Enough for the headline lines to be meaningful and for the strongest, most reproducible correlations to surface. Treat single-window or low-confidence findings as hypotheses, not facts.'
+    : 'A solid base. Reproducible, FDR-surviving correlations are worth attention; the advanced (moderation / dose-response) analyses unlock once well-sampled days reach 100.'));
+  s7.append(P('Honest limits that never go away: this is one person\'s self-report, correlation is not causation, the NII is a symptom proxy not a lab value, and the IVIG curve is a population-average model — your real kinetics vary. Use rising trends as a prompt to rest and check sleep/stress, and talk to your neurologist about anything that climbs and stays high.'));
+
+  // 8 — sources
+  Object.keys(SCIENCE_SOURCES).forEach(secName=>{ const c=el('div',{class:'card'}); c.append(el('h2',{},secName));
+    SCIENCE_SOURCES[secName].forEach(([t,d,u])=>c.append(el('a',{href:u,target:'_blank',style:'display:block;padding:9px 0;border-bottom:1px solid var(--line)'},
+      el('div',{style:'font-size:13px;font-weight:600;color:var(--ink)'},t), el('div',{class:'muted',style:'font-size:11.5px'},d))));
+    v.append(c); });
+  v.append(el('button',{class:'btn ghost block',style:'margin-bottom:6px',onclick:()=>go('sources')},'❋ Clinical instruments & neuroinflammation sources →'));
+  v.append(el('div',{class:'banner pink',style:'margin-bottom:16px'}, el('span',{class:'bic'},'⚕️'),
+    el('div',{class:'bt'}, el('b',{},'Not medical advice'), el('span',{},'A personal tracking tool, not a diagnostic device. Nothing here replaces your care team.'))));
+};
+
 Views.sources=(v)=>{
   v.append(header('Sources',''));
   v.append(el('p',{class:'muted',style:'margin-top:0'},'The evidence behind the assessments and the neuroinflammation estimate. Nothing here is hidden in code.'));
