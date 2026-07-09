@@ -847,8 +847,18 @@ const Assess = {
     D().toggleTypes.forEach(t=>{ const open=Derive.openEpisode(t.id);
       b.append(el('div',{class:'tgl'+(open?' on':''),onclick:()=>{ Toggles.flip(t.id); this.render(); }},
         el('div',{class:'sw'}), el('div',{class:'tinfo'}, el('b',{},t.label), el('span',{},open?'On since '+fmtT(open.startTs):'Off')))); });
-    b.append(el('h3',{},'Final thoughts'));
-    b.append(el('textarea',{placeholder:'Anything notable about today…',oninput:e=>d.notes=e.target.value},d.notes));
+    b.append(el('h3',{},'Quick notes'));
+    b.append(el('p',{class:'muted',style:'margin:0 0 8px'},'Short one-liners only — e.g. "skipped injection", "big argument", "traveled". Each becomes a lightly-weighted variable in your correlations. Not for journaling.'));
+    d.noteTags=d.noteTags||[];
+    const chips=el('div',{class:'row wrap',style:'gap:6px;margin-bottom:8px'});
+    const drawChips=()=>{ chips.innerHTML=''; d.noteTags.forEach((t,i)=>chips.append(
+      el('span',{class:'pill',style:'cursor:pointer',onclick:()=>{d.noteTags.splice(i,1);d.notes=d.noteTags.join('; ');drawChips();}}, t,' ✕'))); };
+    const inp=el('input',{type:'text',placeholder:'one-liner + Enter (e.g. skipped injection)',maxlength:60});
+    const add=()=>{ const s=inp.value.trim(); if(s){ d.noteTags.push(s); d.notes=d.noteTags.join('; '); inp.value=''; drawChips(); } };
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); add(); } });
+    b.append(chips);
+    b.append(el('div',{class:'row',style:'gap:8px'}, inp, el('button',{class:'btn sm',onclick:add},'Add')));
+    drawChips();
     b.append(this.footer('Finish ✓'));
   },
   // cognitive & quiz steps are defined in the cognitive module (below)
@@ -1196,12 +1206,17 @@ const QuickLog = {
    Transparent: every finding exposes n, r, prior, confidence, timing.
    ========================================================================== */
 const Insights = {
+  // ad-hoc one-liner note tags that recur on >=3 days become lightweight variables
+  noteTags(){ const days={};
+    D().assessments.forEach(a=>{ const k=dayKey(a.ts); (a.noteTags||[]).forEach(t=>{ const s=t.trim().toLowerCase(); if(!s)return; (days[s]=days[s]||new Set()).add(k); }); });
+    return Object.keys(days).filter(s=>days[s].size>=3); },
   // one feature vector per calendar day (averages if multiple assessments)
   dayVectors(){
     const byDay={};
     D().assessments.forEach(a=>{ const k=dayKey(a.ts); (byDay[k]=byDay[k]||[]).push(a); });
     const days=Object.keys(byDay).sort();
     const stopWin={}; D().meds.forEach(m=>stopWin[m.id]=Derive.medStopWindow(m.id));
+    const noteTags=this.noteTags();
     return days.map(k=>{
       const list=byDay[k]; const ts=list[0].ts; const v={ _day:k, _ts:ts };
       // average sliders
@@ -1243,6 +1258,9 @@ const Insights = {
       // self-care (binary per activity today)
       D().selfCareTypes.forEach(item=>{ const did=list.some(a=>(a.selfCare||[]).includes(item));
         v['sc_'+item]=did?1:0; });
+      // ad-hoc one-liner note tags (lightly weighted extra variables)
+      const dayNotes=new Set(); list.forEach(a=>(a.noteTags||[]).forEach(t=>dayNotes.add(t.trim().toLowerCase())));
+      noteTags.forEach(t=>{ v['note_'+t]=dayNotes.has(t)?1:0; });
       // derived episode/IVIG
       v.daysSinceIVIG=Derive.daysSinceIVIG(ts);
       D().toggleTypes.forEach(t=>{ v['ep_'+t.id+'_active']=Derive.episodeActive(t.id,ts)?1:0;
@@ -1268,6 +1286,7 @@ const Insights = {
     V.moodWake={label:'Morning mood',kind:'predictor'}; V.moodEnd={label:'End-of-day mood',kind:'symptom'};
     V.moodDelta={label:'Mood shift (AM→PM)',kind:'predictor'};
     D().selfCareTypes.forEach(item=>{ V['sc_'+item]={label:item,kind:'predictor'}; });
+    this.noteTags().forEach(t=>{ V['note_'+t]={label:'Note: '+t,kind:'predictor'}; });
     D().meds.forEach(m=>{ V['med_'+m.id+'_change']={label:m.name+' dose change',kind:'predictor'}; V['med_'+m.id+'_missed']={label:m.name+' missed',kind:'predictor'};
       V['med_'+m.id+'_chronic']={label:m.name+' chronic-regimen change',kind:'predictor'};
       V['med_'+m.id+'_mg']={label:m.name+' dose (mg)',kind:'predictor'};
@@ -1318,7 +1337,9 @@ const Insights = {
           const repro=(Math.sign(r1)===Math.sign(r2)&&Math.abs(r1)>.1&&Math.abs(r2)>.1)?0.9:(Math.sign(r1)===Math.sign(r2)?0.55:0.2);
           const prior=this.prior(pk,ok);
           const rEst=Stats.shrink(r,n,prior);
-          const conf=Stats.confidence(rEst,n,repro);
+          let conf=Stats.confidence(rEst,n,repro);
+          // ad-hoc note tags are lightly weighted (discounted confidence)
+          if(pk.startsWith('note_')||ok.startsWith('note_')) conf=Math.round(conf*0.7);
           if(conf<25) continue;
           findings.push({ pk, ok, pLabel:V[pk].label, oLabel:V[ok].label, r:+rEst.toFixed(2), rObs:+r.toFixed(2), n, lag,
             conf, prior:!!prior, timing: lag===0?'same-day':(lag===1?'next-day':(lag>=7?'a week later':lag+'-day delay')),
