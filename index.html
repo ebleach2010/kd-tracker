@@ -359,7 +359,7 @@ const Store = (()=>{
     weights:{alpha:.25}, // subjective-attenuation strength
     priors:JSON.parse(JSON.stringify(CONFIG.priors)),
     assessments:[], medLogs:[], supplementLogs:[], vitals:[], moodLogs:[],
-    events:[], episodes:[], regimen:[], regimenLog:[], skips:[],
+    events:[], episodes:[], regimen:[], regimenLog:[], skips:[], mealDays:{},
     literatureCache:null, prioReviewed:null,
   });
   let data;
@@ -434,10 +434,10 @@ const Views = {}; // Views[tab] = (mount)=>{}
 const TABS=[
   {id:'home', label:'Home', ic:'◎'},
   {id:'meds', label:'Meds', ic:'💊'},
+  {id:'mealtab', label:'Meals', ic:'🍽'},
   {id:'trends', label:'Trends', ic:'📈'},
   {id:'insights', label:'Insights', ic:'✦'},
   {id:'history', label:'History', ic:'▦'},
-  {id:'events', label:'Events', ic:'✚'},
   {id:'settings', label:'Settings', ic:'⚙'},
 ];
 // medication frequency options for the regimen table
@@ -766,7 +766,6 @@ const Assess = {
       // EVENING (comprehensive daily, or weekly full baseline)
       S.push({t:'exertion', title:'Context — exertion today'});
       S.push({t:'vitals', title:'Vitals — glucose & blood pressure'});
-      S.push({t:'meals', title:'Meals'});
       S.push({t:'selfcare', title:'Self-care today'});
       S.push({t:'sleep', title:'Sleep (last night)'});
       const sl=CONFIG.sliders;
@@ -1457,10 +1456,20 @@ const Insights = {
       D().moodLogs.filter(m=>m.type==='wake'&&dayKey(m.ts)===k).forEach(m=>wakeM.push(m.value));
       if(endM.length)v.moodEnd=Stats.mean(endM); if(wakeM.length)v.moodWake=Stats.mean(wakeM);
       if(v.moodEnd!=null&&v.moodWake!=null)v.moodDelta=v.moodEnd-v.moodWake;
-      // meals
-      const meal=list.map(a=>a.meals).filter(m=>m&&m.quality!=null);
-      if(meal.length){ v.mealQuality=Stats.mean(meal.map(m=>m.quality)); v.mealCount=Stats.mean(meal.map(m=>({'1':1,'2':2,'3':3,'3+':4})[m.count]||2));
-        v.mealSkip=Stats.mean(meal.map(m=>m.consistency==='skip'?(m.skipIntent==='intentional'?0.3:-1):0)); }
+      // meals — prefer the Meals tab (per-meal toggles); fall back to old assessment meals
+      const md=(D().mealDays||{})[k];
+      if(md){ const meals=['breakfast','lunch','dinner'];
+        meals.forEach(mk=>{ const mm=md[mk]; if(mm==null)return; v[mk+'_ate']=mm.ate?1:0;
+          if(!mm.ate) v[mk+'_skipUnintent']=(mm.intentional===false)?1:0; });
+        v.mealsAte=meals.filter(mk=>md[mk]&&md[mk].ate).length;
+        v.mealsSkipped=meals.filter(mk=>md[mk]&&!md[mk].ate).length;
+        v.mealsSkipUnintent=meals.filter(mk=>md[mk]&&!md[mk].ate&&md[mk].intentional===false).length;
+        if(md.quality!=null)v.mealQuality=md.quality;
+      } else {
+        const meal=list.map(a=>a.meals).filter(m=>m&&m.quality!=null);
+        if(meal.length){ v.mealQuality=Stats.mean(meal.map(m=>m.quality)); v.mealsAte=Stats.mean(meal.map(m=>({'1':1,'2':2,'3':3,'3+':4})[m.count]||2));
+          v.mealSkip=Stats.mean(meal.map(m=>m.consistency==='skip'?(m.skipIntent==='intentional'?0.3:-1):0)); }
+      }
       // sleep
       const sl=list.map(a=>a.sleep).filter(s=>s&&s.totalSleepMin!=null);
       if(sl.length){ v.sleepMin=Stats.mean(sl.map(s=>s.totalSleepMin)); v.sleepEff=Stats.mean(sl.map(s=>s.efficiency||0)); }
@@ -1516,8 +1525,10 @@ const Insights = {
     const V={};
     CONFIG.sliders.forEach(s=>V[s.key]={label:s.label,kind:'symptom'});
     V.mental={label:'Mental exertion',kind:'predictor'}; V.physical={label:'Physical exertion',kind:'predictor'};
-    V.mealQuality={label:'Meal quality',kind:'predictor'}; V.mealCount={label:'Meal count',kind:'predictor'};
+    V.mealQuality={label:'Meal quality',kind:'predictor'}; V.mealsAte={label:'Meals eaten',kind:'predictor'};
+    V.mealsSkipped={label:'Meals skipped',kind:'predictor'}; V.mealsSkipUnintent={label:'Unintentional meal skips',kind:'predictor'};
     V.mealSkip={label:'Meal consistency (signed)',kind:'predictor'};
+    ['breakfast','lunch','dinner'].forEach(mk=>{ V[mk+'_ate']={label:mk.charAt(0).toUpperCase()+mk.slice(1)+' eaten',kind:'predictor'}; V[mk+'_skipUnintent']={label:mk.charAt(0).toUpperCase()+mk.slice(1)+' skipped (unintentional)',kind:'predictor'}; });
     V.sleepMin={label:'Total sleep time',kind:'predictor'}; V.sleepEff={label:'Sleep efficiency',kind:'predictor'};
     V.glucoseMean={label:'Glucose (mean)',kind:'predictor'}; V.glucoseVar={label:'Glucose variability',kind:'predictor'};
     V.glucoseStability={label:'Glucose stability % (day)',kind:'predictor'}; V.glucoseSpike={label:'Glucose spike (daily max)',kind:'predictor'};
@@ -1981,13 +1992,59 @@ Views.meds=(v)=>{
 };
 
 /* ==========================================================================
+   MEALS TAB — per-meal toggles (breakfast/lunch/dinner). Resting state = null.
+   Skipped → intentional? y/n. All feed the correlation engine.
+   ========================================================================== */
+let mealViewDate=null; // dayKey being viewed; null = today
+function mealRec(dk){ D().mealDays=D().mealDays||{}; return D().mealDays[dk]||{}; }
+function setMeal(dk, meal, state){ D().mealDays=D().mealDays||{}; const r=D().mealDays[dk]=D().mealDays[dk]||{};
+  const cur=r[meal]||{}; if(state===null){ delete r[meal]; }
+  else { r[meal]={ate:state==='ate', intentional: state==='skipped'?(cur.intentional!=null?cur.intentional:null):null}; }
+  Store.saveNow(); render(); }
+function setMealIntent(dk, meal, val){ const r=D().mealDays[dk]=D().mealDays[dk]||{}; r[meal]=r[meal]||{ate:false}; r[meal].intentional=val; Store.saveNow(); render(); }
+Views.mealtab=(v)=>{
+  const dk=mealViewDate||dayKey(Date.now()); const isToday=dk===dayKey(Date.now());
+  v.append(header('Meals',''));
+  // day nav
+  const shift=n=>{ const [y,mo,d]=dk.split('-').map(Number); const nd=new Date(y,mo-1,d+n); mealViewDate=dayKey(nd.getTime()); render(); };
+  v.append(el('div',{class:'row',style:'margin-bottom:12px'},
+    el('button',{class:'btn sm ghost',onclick:()=>shift(-1)},'‹'),
+    el('div',{class:'spacer'}), el('b',{},isToday?'Today':new Date(dk+'T12:00:00').toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'})),
+    el('div',{class:'spacer'}), el('button',{class:'btn sm ghost',disabled:isToday,onclick:()=>{ if(!isToday)shift(1); }},'›')));
+  v.append(el('p',{class:'muted',style:'margin-top:0'},'Toggle each meal. Leaving it untouched (neutral) means "not answered." A skip asks if it was intentional. Everything here is cross-referenced in your trends.'));
+  const rec=mealRec(dk);
+  [['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner']].forEach(([key,lab])=>{
+    const m=rec[key]; const state=m==null?null:(m.ate?'ate':'skipped');
+    const card=el('div',{class:'card',style:'padding:13px'});
+    card.append(el('div',{class:'row'}, el('b',{style:'flex:1;font-size:15px'},lab),
+      el('div',{class:'seg'},
+        el('button',{class:state==='ate'?'on':'',style:state==='ate'?'color:var(--green)':'',onclick:()=>setMeal(dk,key,state==='ate'?null:'ate')},'🍽 Ate'),
+        el('button',{class:state==='skipped'?'on':'',style:state==='skipped'?'color:var(--red)':'',onclick:()=>setMeal(dk,key,state==='skipped'?null:'skipped')},'⊘ Skipped'))));
+    if(state==='skipped') card.append(el('div',{style:'margin-top:10px'},
+      el('div',{class:'lb',style:'margin-bottom:5px'},'Was the skip intentional?'),
+      el('div',{class:'seg'},
+        el('button',{class:m.intentional===true?'on':'',onclick:()=>setMealIntent(dk,key,true)},'Yes'),
+        el('button',{class:m.intentional===false?'on':'',onclick:()=>setMealIntent(dk,key,false)},'No'))));
+    v.append(card);
+  });
+  // overall meal quality for the day
+  const qv=rec.quality==null?5:rec.quality;
+  v.append(makeSlider({key:'mealQuality',label:'Overall meal quality today (nutritional substance)'}, qv, val=>{ const r=D().mealDays[dk]=D().mealDays[dk]||{}; r.quality=val; Store.save(); }));
+  // summary
+  const ate=['breakfast','lunch','dinner'].filter(k=>rec[k]&&rec[k].ate).length;
+  const skipped=['breakfast','lunch','dinner'].filter(k=>rec[k]&&!rec[k].ate);
+  v.append(el('p',{class:'muted',style:'text-align:center'}, ate+' eaten · '+skipped.length+' skipped'+
+    (skipped.length?(' ('+skipped.filter(k=>rec[k].intentional===true).length+' intentional)'):'')));
+};
+
+/* ==========================================================================
    HISTORY — calendar + list + detail + backfill
    ========================================================================== */
 let histState={view:'calendar', month:new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime()};
 Views.history=(v)=>{
   if(State.sub&&State.sub.startsWith('a:')){ return renderAssessmentDetail(v, State.sub.slice(2)); }
   if(State.sub&&State.sub.startsWith('day:')){ return renderDayView(v, State.sub.slice(4)); }
-  v.append(header('History',''));
+  v.append(header('History','',[el('button',{class:'btn sm ghost',style:'padding:7px 11px',onclick:()=>go('events')},'✚ Events')]));
   v.append(el('div',{class:'row',style:'margin-bottom:12px'},
     seg(['Calendar','List'], histState.view==='calendar'?'Calendar':'List', x=>{histState.view=x.toLowerCase();render();}),
     el('div',{class:'spacer'}),
@@ -2154,7 +2211,7 @@ const Backfill={ open(){ const scrim=el('div',{class:'scrim'}); const close=()=>
    EVENTS — life events + episode management
    ========================================================================== */
 Views.events=(v)=>{
-  v.append(header('Events',''));
+  v.append(header('Events','',[el('button',{class:'btn sm ghost',onclick:()=>go('history')},'‹ History')]));
   v.append(el('div',{class:'card'}, el('div',{class:'row'}, el('h2',{},'Major life events'), el('div',{class:'spacer'}),
       el('button',{class:'btn sm',onclick:()=>Events.add()},'+ Add')),
     ...( [...D().events].sort((a,b)=>b.date.localeCompare(a.date)).map(e=>el('div',{class:'row',style:'padding:9px 0;border-bottom:1px solid var(--line)'},
